@@ -1,0 +1,23 @@
+{
+    "name": "services",
+    "module": "index.ts",
+    "devDependencies": {
+        "@types/bun": "latest"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    },
+    "private": true,
+    "type": "module",
+    "dependencies": {
+        "dotenv": "^17.2.3",
+        "iconv-lite": "^0.7.0",
+        "kleur": "^4.1.5",
+        "tmdb-ts": "^2.0.2"
+    },
+    "scripts": {
+        "build": "tsc",
+        "dev": "bun run --watch --no-check src/index.ts"
+    },
+    "packageManager": "pnpm@10.15.0+sha1.8e43a0b959a228ea479539575a66f5eafc89023a"
+}
