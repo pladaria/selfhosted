@@ -8,7 +8,7 @@ import {cyan, gray, red, yellow} from 'kleur/colors';
 
 const LOCALE_DEFAULT = 'en-US';
 const EXTENSIONS_DEFAULT = 'mkv,avi,mp4,mov';
-const LANG = process.env.LANG?.split('.')[0]?.replace('_', '-') || LOCALE_DEFAULT;
+const TMDB_LANG = process.env.TMDB_LANG?.split('.')[0]?.replace('_', '-') || LOCALE_DEFAULT;
 
 const logInfo = (msg: string = '') => {
     console.log(cyan(msg));
@@ -32,7 +32,7 @@ Usage: command [options]
 Env vars:
 
 * TMDB_API_ACCESS_TOKEN: your TMDB API access token.
-* LANG: language code for TMDB queries (if not set, fallbacks to: "${LOCALE_DEFAULT}").
+* TMDB_LANG: language code for TMDB queries (if not set, fallbacks to: "${LOCALE_DEFAULT}").
 
 Options:
   -i, --incoming             Path to incoming directory (default: current working directory)
@@ -79,6 +79,11 @@ const {values} = parseArgs({
             type: 'string',
             short: 's',
             default: '',
+        },
+        link: {
+            type: 'boolean',
+            short: 'l',
+            default: false,
         },
         dryRun: {
             type: 'boolean',
@@ -153,7 +158,7 @@ const parseMovieFilename = async (filename: string): Promise<ParsedVideo | null>
         tmdbId = idMatch[1]!;
         rest = clean.slice((idMatch.index || 0) + idMatch[0].length).trim();
         logAction(`Get from TMDB by id: ${tmdbId}`);
-        const movie = (await tmdb.movies.details(parseInt(tmdbId, 10), undefined, LANG)) as unknown as Movie;
+        const movie = (await tmdb.movies.details(parseInt(tmdbId, 10), undefined, TMDB_LANG)) as unknown as Movie;
         movies = movie ? [movie] : [];
     } else {
         // year is a 4-digit number between 1900 and 2099 and is usually in parentheses or brackets
@@ -176,8 +181,8 @@ const parseMovieFilename = async (filename: string): Promise<ParsedVideo | null>
         rest = clean.slice((yearMatch.index || 0) + yearMatch[0].length).trim();
         query = clean.slice(0, yearMatch.index).trim();
 
-        logAction(`Search TMDB: ${JSON.stringify({query, year, language: LANG})}`);
-        const response = await tmdb.search.movies({query, year, language: LANG as never});
+        logAction(`Search TMDB: ${JSON.stringify({query, year, language: TMDB_LANG})}`);
+        const response = await tmdb.search.movies({query, year, language: TMDB_LANG as never});
         movies = response.results;
     }
 
@@ -234,17 +239,26 @@ const getVideosInDirectory = (path: string, extensions: Array<string>): Array<st
     return files;
 };
 
-const processVideoFile = async (video: ParsedVideo) => {
+const moveVideoToFolder = (video: ParsedVideo, videoFolder: string) => {
     const dry = values.dryRun;
-    const videoFolder = path.join(values.moviesPath, video.folder);
+
     logAction(`Create folder: "${videoFolder}"`);
     if (!dry) {
-        fs.mkdirSync(videoFolder, {recursive: true});
+        fs.mkdirSync(videoFolder, { recursive: true });
     }
-    logAction(`Move file to: "${path.join(videoFolder, video.clean)}"`);
+    logAction(`${values.link ? 'Link' : 'Move'} file to: "${path.join(videoFolder, video.clean)}"`);
     if (!dry) {
-        fs.renameSync(path.join(values.incoming, video.raw), path.join(videoFolder, video.clean));
+        if (values.link) {
+            fs.linkSync(path.join(values.incoming, video.raw), path.join(videoFolder, video.clean));
+        } else {
+            fs.renameSync(path.join(values.incoming, video.raw), path.join(videoFolder, video.clean));
+        }
     }
+}
+
+const processVideoFile = async (video: ParsedVideo) => {
+    const videoFolder = path.join(values.moviesPath, video.folder);
+    moveVideoToFolder(video, videoFolder);
     const meta = [
         '.nfo',
         '.trickplay',
@@ -270,7 +284,7 @@ const processVideoFile = async (video: ParsedVideo) => {
                     ? `${baseCleanName}.trickplay`
                     : suffix.replace('-', '');
             logAction(`Move ${suffix} to: "${path.join(videoFolder, destinationName)}"`);
-            if (!dry) {
+            if (!values.dryRun) {
                 fs.renameSync(metaFilePath, path.join(videoFolder, destinationName));
             }
         }
@@ -356,17 +370,17 @@ const parseEpisodeFilename = async (filename: string) => {
     let show;
     if (id) {
         logAction(`Get TV show from TMDB by id: ${id}`);
-        show = await tmdb.tvShows.details(parseInt(id, 10), undefined, LANG);
+        show = await tmdb.tvShows.details(parseInt(id, 10), undefined, TMDB_LANG);
         if (!show) {
             logError(`TV show with TMDB ID ${id} not found`);
             return null;
         }
     } else {
-        logAction(`Search TMDB TV show: ${JSON.stringify({query: title, year, language: LANG})}`);
+        logAction(`Search TMDB TV show: ${JSON.stringify({query: title, year, language: TMDB_LANG})}`);
         const response = await tmdb.search.tvShows({
             query: title,
             year,
-            language: LANG as never,
+            language: TMDB_LANG as never,
         });
         if (response.results.length === 0) {
             logError(`No TV show found`);
@@ -420,7 +434,7 @@ const parseEpisodeFilename = async (filename: string) => {
             episodeNumber: episode,
         },
         undefined,
-        {language: LANG as never}
+        {language: TMDB_LANG as never}
     );
     if (!episodeInfo) {
         logError(`TV episode not found`);
@@ -445,17 +459,45 @@ const parseEpisodeFilename = async (filename: string) => {
 };
 
 const processEpisodeFile = async (video: ParsedVideo) => {
-    const dry = values.dryRun;
     const videoPath = path.join(values.seriesPath, video.folder);
-    logAction(`Create folder: "${videoPath}"`);
-    if (!dry) {
-        fs.mkdirSync(videoPath, {recursive: true});
-    }
-    logAction(`Move file to: "${path.join(videoPath, video.clean)}"`);
-    if (!dry) {
-        fs.renameSync(path.join(values.incoming, video.raw), path.join(videoPath, video.clean));
-    }
+    moveVideoToFolder(video, videoPath);
 };
+
+const isFileAlreadyLinked = (file: string): boolean => {
+    const filePath = path.join(values.incoming, file);
+    try {
+        const {nlink, ino} = fs.statSync(filePath);
+        // If nlink <= 1, the file has no hard links
+        if (nlink <= 1) {
+            return false;
+        }
+
+        const checkDir = (dir: string): boolean => {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const entryPath = path.join(dir, entry.name);
+                try {
+                    if (fs.statSync(entryPath).ino === ino) {
+                        return true;
+                    }
+                    if (entry.isDirectory() && checkDir(entryPath)) {
+                        return true;
+                    }
+                } catch (error) {
+                    // Skip files we can't access
+                    continue;
+                }
+            }
+            return false;
+        };
+
+        return checkDir(values.moviesPath) || checkDir(values.seriesPath);
+    } catch (error) {
+        logError(`Error checking if file is linked: ${error}`);
+        return false;
+    }
+}
+
 
 const main = async () => {
     if (values.help) {
@@ -482,10 +524,14 @@ const main = async () => {
     }
 
     const extensions = values.extensions.split(',').map((s) => s.trim().toLowerCase());
-    const videoFiles = getVideosInDirectory(values.incoming, extensions);
+    let videoFiles = getVideosInDirectory(values.incoming, extensions);
+
+    if (values.link) {
+        videoFiles = videoFiles.filter((file) => !isFileAlreadyLinked(file));
+    }
 
     if (!videoFiles.length) {
-        logAction(`No video files (${extensions.join(', ')}) found in: "${values.incoming}"`);
+        logAction(`No ${values.link ? 'new ' : ''}video files (${extensions.join(', ')}) found in: "${values.incoming}"`);
         process.exit(0);
     }
 
