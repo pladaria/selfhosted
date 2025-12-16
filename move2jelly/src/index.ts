@@ -124,6 +124,10 @@ const simplify = (str: string): string => {
     return result;
 };
 
+const sanitizeFilename = (name: string): string => {
+    return name.replace(/[\/\0]/g, '-'); // remove / and null character
+};
+
 const cleanTitle = (title: string): string => {
     return title
         .replace(/(\.[^.\s]+)$/, '') // remove extension
@@ -158,7 +162,11 @@ const parseMovieFilename = async (filename: string): Promise<ParsedVideo | null>
         tmdbId = idMatch[1]!;
         rest = clean.slice((idMatch.index || 0) + idMatch[0].length).trim();
         logAction(`Get from TMDB by id: ${tmdbId}`);
-        const movie = (await tmdb.movies.details(parseInt(tmdbId, 10), undefined, TMDB_LANG)) as unknown as Movie;
+        const movie = (await tmdb.movies.details(
+            parseInt(tmdbId, 10),
+            undefined,
+            TMDB_LANG
+        )) as unknown as Movie;
         movies = movie ? [movie] : [];
     } else {
         // year is a 4-digit number between 1900 and 2099 and is usually in parentheses or brackets
@@ -244,7 +252,7 @@ const moveVideoToFolder = (video: ParsedVideo, videoFolder: string) => {
 
     logAction(`Create folder: "${videoFolder}"`);
     if (!dry) {
-        fs.mkdirSync(videoFolder, { recursive: true });
+        fs.mkdirSync(videoFolder, {recursive: true});
     }
     logAction(`${values.link ? 'Link' : 'Move'} file to: "${path.join(videoFolder, video.clean)}"`);
     if (!dry) {
@@ -254,7 +262,7 @@ const moveVideoToFolder = (video: ParsedVideo, videoFolder: string) => {
             fs.renameSync(path.join(values.incoming, video.raw), path.join(videoFolder, video.clean));
         }
     }
-}
+};
 
 const processVideoFile = async (video: ParsedVideo) => {
     const videoFolder = path.join(values.moviesPath, video.folder);
@@ -277,12 +285,13 @@ const processVideoFile = async (video: ParsedVideo) => {
     for (const suffix of meta) {
         const metaFilePath = path.join(values.incoming, `${baseRawName}${suffix}`);
         if (fs.existsSync(metaFilePath)) {
-            let destinationName =
+            let destinationName = sanitizeFilename(
                 suffix === '.nfo'
                     ? 'movie.nfo'
                     : suffix === '.trickplay'
                     ? `${baseCleanName}.trickplay`
-                    : suffix.replace('-', '');
+                    : suffix.replace('-', '')
+            );
             logAction(`Move ${suffix} to: "${path.join(videoFolder, destinationName)}"`);
             if (!values.dryRun) {
                 fs.renameSync(metaFilePath, path.join(videoFolder, destinationName));
@@ -450,10 +459,12 @@ const parseEpisodeFilename = async (filename: string) => {
     }
     const episodeYear = episodeInfo.air_date ? episodeInfo.air_date.split('-')[0] : year || firstYear;
     return {
-        folder: `${show.name} (${firstYear}) [tmdbid-${show.id}]/Season ${seasonStr}`,
-        clean: `${show.name} (${episodeYear}) S${seasonStr}E${episodeStr} ${
+        folder: `${sanitizeFilename(show.name)} (${firstYear}) [tmdbid-${show.id}]/Season ${seasonStr}`,
+        clean: `${sanitizeFilename(
+            show.name
+        )} (${episodeYear}) S${seasonStr}E${episodeStr} ${sanitizeFilename(
             values.keepFileEpisode ? episodeTitle : episodeInfo.name
-        }${rest ? ' - ' + rest : ''}.${extension}`,
+        )}${rest ? ' - ' + rest : ''}.${extension}`,
         raw: filename,
     };
 };
@@ -473,7 +484,7 @@ const isFileAlreadyLinked = (file: string): boolean => {
         }
 
         const checkDir = (dir: string): boolean => {
-            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            const entries = fs.readdirSync(dir, {withFileTypes: true});
             for (const entry of entries) {
                 const entryPath = path.join(dir, entry.name);
                 try {
@@ -496,8 +507,7 @@ const isFileAlreadyLinked = (file: string): boolean => {
         logError(`Error checking if file is linked: ${error}`);
         return false;
     }
-}
-
+};
 
 const main = async () => {
     if (values.help) {
@@ -531,7 +541,11 @@ const main = async () => {
     }
 
     if (!videoFiles.length) {
-        logAction(`No ${values.link ? 'new ' : ''}video files (${extensions.join(', ')}) found in: "${values.incoming}"`);
+        logAction(
+            `No ${values.link ? 'new ' : ''}video files (${extensions.join(', ')}) found in: "${
+                values.incoming
+            }"`
+        );
         process.exit(0);
     }
 
