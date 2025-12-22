@@ -125,7 +125,9 @@ const simplify = (str: string): string => {
 };
 
 const sanitizeFilename = (name: string): string => {
-    return name.replace(/[\/\0]/g, '-'); // remove / and null character
+    return name
+        .replace(/[\/\0]/g, '-') // remove / and null character
+        .replace(/:/g, '.'); // remove colon
 };
 
 const cleanTitle = (title: string): string => {
