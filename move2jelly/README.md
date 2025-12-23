@@ -7,11 +7,13 @@ metadata fetched from The Movie Database (TMDb) and renaming them according the 
 
 # HOWTO run
 
-This tool assumes all your media files are directly in the folder, not in folders. e.g You can copy them like this if needed.
+This tool assumes all your media files are directly in the folder, not in folders. e.g You can hardlink them like this if needed.
 
 ```
-find . -mindepth 2 -type f -exec cp -n -t . {} +
+find . -mindepth 2 -type f -exec ln -t . {} +
 ```
+
+
 
 Also make sure you avoid colons in titles as Jellyfin might not like them
 ```
