@@ -13,6 +13,10 @@ This tool assumes all your media files are directly in the folder, not in folder
 find . -mindepth 2 -type f -exec cp -n -t . {} +
 ```
 
+Also make sure you avoid colons in titles as Jellyfin might not like them
+```
+find . -depth -type d -name '*:*' -exec bash -c 'for d; do mv -- "$d" "${d//:/.}"; done' _ {} +
+```
 
 ```
 export TMDB_API_ACCESS_TOKEN=YOUR_TMDB_ACCESS_TOKEN # You can register for free in https://www.themoviedb.org/ and obtain a key from your account
