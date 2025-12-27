@@ -214,12 +214,12 @@ const parseMovieFilename = async (filename: string): Promise<ParsedVideo | null>
 
     if (movies.length === 1) {
         const movie = movies[0]!;
-        const title = movie.title.replace(/ - /g, '. '); // to avoid conflicts with the rest part
+        const title = sanitizeFilename(movie.title.replace(/ - /g, '. ')); // to avoid conflicts with the rest part
         const year = movie.release_date.split('-')[0];
         return {
             raw: filename,
             folder: `${title} (${year}) [tmdbid-${movie.id}]`,
-            clean: `${title} (${year}) - ${rest}.${extension}`,
+            clean: `${title} (${year}) - ${sanitizeFilename(rest)}.${extension}`,
         };
     }
 
@@ -466,7 +466,7 @@ const parseEpisodeFilename = async (filename: string) => {
             show.name
         )} (${episodeYear}) S${seasonStr}E${episodeStr} ${sanitizeFilename(
             values.keepFileEpisode ? episodeTitle : episodeInfo.name
-        )}${rest ? ' - ' + rest : ''}.${extension}`,
+        )}${sanitizeFilename(rest ? ' - ' + rest : '')}.${extension}`,
         raw: filename,
     };
 };
