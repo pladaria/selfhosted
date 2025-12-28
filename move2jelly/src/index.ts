@@ -219,7 +219,7 @@ const parseMovieFilename = async (filename: string): Promise<ParsedVideo | null>
         return {
             raw: filename,
             folder: `${title} (${year}) [tmdbid-${movie.id}]`,
-            clean: `${title} (${year}) - ${sanitizeFilename(rest)}.${extension}`,
+            clean: `${title} (${year}) [tmdbid-${movie.id}] - ${sanitizeFilename(rest)}.${extension}`,
         };
     }
 
