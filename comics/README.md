@@ -4,8 +4,8 @@ This folder contains utility scripts for managing comic book archives:
 
 ## 1. `convert-to-webp.sh`
 
-**Description:** Converts CBZ comic archives to use WebP images (90% quality), optionally resizing images to a
-maximum dimension. Creates a new CBZ file with the suffix ` [webp]`.
+**Description:** Converts CBZ comic archives to use WebP images, resizing images to a maximum dimension.
+Creates a new CBZ file with the suffix ` [webp]`.
 
 **Usage:**
 
