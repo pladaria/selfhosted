@@ -559,6 +559,28 @@ body {
     margin: 0;
 }
 
+.settings-input {
+    width: 100%;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.settings-input:focus {
+    border-color: var(--accent);
+}
+
+.settings-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 10px;

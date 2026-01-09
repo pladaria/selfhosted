@@ -3,18 +3,20 @@ import {FileTree} from './FileTree';
 import {CodeEditor, CodeEditorRef} from './CodeEditor';
 import {MarkdownEditor} from './MarkdownEditor';
 import {Settings} from './Settings';
-import {FileNode} from './types';
+import {SupabaseConfig} from './SupabaseConfig';
+import {FileNode, FileSystemStore} from './types';
 import {LocalStorageStore} from './store';
+import {SupabaseStore} from './SupabaseStore';
 import {Eye, EyeOff, Sparkles, Settings as SettingsIcon, Plus, FolderPlus} from 'lucide-react';
 import './App.css';
 
-const store = new LocalStorageStore();
-
 function App() {
+    const [store, setStore] = useState<FileSystemStore>(() => new LocalStorageStore());
     const [tree, setTree] = useState<FileNode[]>([]);
     const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
     const [showPreview, setShowPreview] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
+    const [showSupabaseConfig, setShowSupabaseConfig] = useState(false);
     const codeEditorRef = useRef<CodeEditorRef>(null);
 
     const handleFormat = () => {
@@ -22,13 +24,42 @@ function App() {
     };
 
     const loadTree = async () => {
-        const data = await store.getTree();
-        setTree(data);
+        try {
+            const data = await store.getTree();
+            setTree(data);
+        } catch (error) {
+            console.error('Error loading tree:', error);
+            alert('Error al cargar los documentos. Verifica tu configuración.');
+        }
     };
+
+    // Inicializar el store correcto al cargar
+    useEffect(() => {
+        const backend = localStorage.getItem('mdocs-backend') || 'local';
+        if (backend === 'cloud') {
+            const url = localStorage.getItem('supabase-url');
+            const key = localStorage.getItem('supabase-key');
+            const userId = localStorage.getItem('supabase-user-id');
+
+            if (url && key && userId) {
+                try {
+                    const supabaseStore = new SupabaseStore(url, key, userId);
+                    setStore(supabaseStore);
+                } catch (error) {
+                    console.error('Error initializing Supabase store:', error);
+                    setStore(new LocalStorageStore());
+                }
+            } else {
+                // Si no hay configuración, volver a local
+                localStorage.setItem('mdocs-backend', 'local');
+                setStore(new LocalStorageStore());
+            }
+        }
+    }, []);
 
     useEffect(() => {
         loadTree();
-    }, []);
+    }, [store]);
 
     const handleSelectFile = async (file: FileNode) => {
         if (file.type === 'file') {
@@ -74,6 +105,18 @@ function App() {
         if (selectedFile) {
             await store.updateFile(selectedFile.id, {content});
             setSelectedFile({...selectedFile, content});
+        }
+    };
+
+    const handleSupabaseConfigSave = (url: string, key: string, userId: string) => {
+        try {
+            const supabaseStore = new SupabaseStore(url, key, userId);
+            setStore(supabaseStore);
+            setSelectedFile(null);
+            loadTree();
+        } catch (error) {
+            console.error('Error configuring Supabase:', error);
+            alert('Error al configurar Supabase. Verifica tus credenciales.');
         }
     };
 
@@ -149,7 +192,19 @@ function App() {
                     </div>
                 )}
             </div>
-            <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
+            <Settings
+                isOpen={showSettings}
+                onClose={() => setShowSettings(false)}
+                onOpenSupabaseConfig={() => {
+                    setShowSettings(false);
+                    setShowSupabaseConfig(true);
+                }}
+            />
+            <SupabaseConfig
+                isOpen={showSupabaseConfig}
+                onClose={() => setShowSupabaseConfig(false)}
+                onSave={handleSupabaseConfigSave}
+            />
         </div>
     );
 }
