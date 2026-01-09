@@ -1,13 +1,11 @@
 import React, {useState, useRef, useEffect} from 'react';
 import {FileNode} from './types';
-import {File, Folder, FolderOpen, Plus, Trash2, Edit2, FolderPlus} from 'lucide-react';
-import {ThemeSelector} from './ThemeSelector';
+import {File, Folder, FolderOpen, Trash2, Edit2} from 'lucide-react';
 
 interface FileTreeProps {
     nodes: FileNode[];
     selectedFileId: string | null;
     onSelectFile: (file: FileNode) => void;
-    onCreateFile: (parentId: string | null, type: 'file' | 'directory') => void;
     onRename: (id: string, newName: string) => void;
     onDelete: (id: string) => void;
     onMove: (id: string, newParentId: string | null) => void;
@@ -17,7 +15,6 @@ export const FileTree: React.FC<FileTreeProps> = ({
     nodes,
     selectedFileId,
     onSelectFile,
-    onCreateFile,
     onRename,
     onDelete,
     onMove,
@@ -185,18 +182,6 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
     return (
         <div className="file-tree">
-            <div className="file-tree-header">
-                <h3>MDocs</h3>
-                <div className="file-tree-actions">
-                    <ThemeSelector />
-                    <button onClick={() => onCreateFile(null, 'file')} title="Nuevo archivo">
-                        <Plus size={16} />
-                    </button>
-                    <button onClick={() => onCreateFile(null, 'directory')} title="Nueva carpeta">
-                        <FolderPlus size={16} />
-                    </button>
-                </div>
-            </div>
             <div
                 className="file-tree-content"
                 onContextMenu={(e) => handleContextMenu(e, null)}

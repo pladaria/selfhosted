@@ -35,8 +35,9 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
-        'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    font-family:
+        -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans',
+        'Droid Sans', 'Helvetica Neue', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
@@ -71,35 +72,29 @@ body {
     overflow: hidden;
 }
 
-/* File Tree */
-.file-tree {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-
-.file-tree-header {
+/* App Header */
+.app-header {
     padding: 12px 16px;
     border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background-color: var(--bg-secondary);
 }
 
-.file-tree-header h3 {
-    font-size: 14px;
+.app-header h1 {
+    font-size: 16px;
     font-weight: 600;
-    text-transform: uppercase;
-    color: var(--text-primary);
+    color: var(--text-heading);
+    margin: 0;
 }
 
-.file-tree-actions {
+.app-header-actions {
     display: flex;
     gap: 4px;
 }
 
-.file-tree-actions button,
-.theme-selector {
+.app-header-actions button {
     background: none;
     border: none;
     color: var(--text-primary);
@@ -111,14 +106,19 @@ body {
     justify-content: center;
 }
 
-.file-tree-actions button:hover,
-.theme-selector:hover {
+.app-header-actions button:hover {
     background-color: var(--hover-bg);
 }
 
-.file-tree-content {
-    flex: 1;
+/* File Tree */
+.file-tree {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
     overflow-y: auto;
+}
+
+.file-tree-content {
     padding: 4px 0;
 }
 
@@ -231,7 +231,8 @@ body {
 }
 
 .format-button,
-.toggle-preview {
+.toggle-preview,
+.settings-button {
     background: none;
     border: none;
     color: var(--text-primary);
@@ -244,7 +245,8 @@ body {
 }
 
 .format-button:hover,
-.toggle-preview:hover {
+.toggle-preview:hover,
+.settings-button:hover {
     background-color: var(--hover-bg);
 }
 
@@ -383,6 +385,178 @@ body {
 .empty-state p {
     font-size: 14px;
     color: var(--text-secondary);
+}
+
+/* Settings Modal */
+.settings-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+}
+
+.settings-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    z-index: 1001;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.settings-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-heading);
+}
+
+.settings-close {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.settings-close:hover {
+    background-color: var(--hover-bg);
+}
+
+.settings-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.settings-section {
+    margin-bottom: 32px;
+}
+
+.settings-section:last-child {
+    margin-bottom: 0;
+}
+
+.settings-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.settings-option {
+    margin-bottom: 20px;
+}
+
+.settings-option:last-child {
+    margin-bottom: 0;
+}
+
+.settings-option label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.theme-options {
+    display: flex;
+    gap: 8px;
+}
+
+.theme-option {
+    flex: 1;
+    background-color: var(--bg-tertiary);
+    border: 2px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 12px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.theme-option:hover {
+    background-color: var(--hover-bg);
+    border-color: var(--accent);
+}
+
+.theme-option.active {
+    background-color: var(--selected-bg);
+    border-color: var(--accent);
+}
+
+.theme-option span {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.backend-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.backend-option {
+    background-color: var(--bg-tertiary);
+    border: 2px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 16px;
+    border-radius: 6px;
+    text-align: left;
+    transition: all 0.2s;
+}
+
+.backend-option:hover {
+    background-color: var(--hover-bg);
+    border-color: var(--accent);
+}
+
+.backend-option.active {
+    background-color: var(--selected-bg);
+    border-color: var(--accent);
+}
+
+.backend-option span {
+    font-size: 14px;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.backend-option p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0;
 }
 
 /* Scrollbar */
