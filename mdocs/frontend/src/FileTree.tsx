@@ -1,23 +1,37 @@
 import React, {useState, useRef, useEffect} from 'react';
 import {FileNode} from './types';
-import {File, Folder, FolderOpen, Trash2, Edit2} from 'lucide-react';
+import {
+    File,
+    Folder,
+    FolderOpen,
+    Trash2,
+    Edit2,
+    Plus,
+    FolderPlus,
+    ChevronRight,
+    ChevronDown,
+} from 'lucide-react';
 
 interface FileTreeProps {
     nodes: FileNode[];
     selectedFileId: string | null;
     onSelectFile: (file: FileNode) => void;
+    onCreateFile: (parentId: string | null, type: 'file' | 'directory') => void;
     onRename: (id: string, newName: string) => void;
     onDelete: (id: string) => void;
     onMove: (id: string, newParentId: string | null) => void;
+    expandDirectoryId?: string | null;
 }
 
 export const FileTree: React.FC<FileTreeProps> = ({
     nodes,
     selectedFileId,
     onSelectFile,
+    onCreateFile,
     onRename,
     onDelete,
     onMove,
+    expandDirectoryId,
 }) => {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [contextMenu, setContextMenu] = useState<{
@@ -30,6 +44,16 @@ export const FileTree: React.FC<FileTreeProps> = ({
     const [draggedId, setDraggedId] = useState<string | null>(null);
 
     const contextMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (expandDirectoryId) {
+            setExpandedIds((prev) => {
+                const next = new Set(prev);
+                next.add(expandDirectoryId);
+                return next;
+            });
+        }
+    }, [expandDirectoryId]);
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -148,13 +172,19 @@ export const FileTree: React.FC<FileTreeProps> = ({
                     onDrop={(e) => handleDrop(e, node)}
                 >
                     {node.type === 'directory' ? (
-                        isExpanded ? (
-                            <FolderOpen size={16} />
-                        ) : (
-                            <Folder size={16} />
-                        )
+                        <>
+                            {isExpanded ? (
+                                <ChevronDown size={12} style={{flexShrink: 0}} />
+                            ) : (
+                                <ChevronRight size={12} style={{flexShrink: 0}} />
+                            )}
+                            {isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />}
+                        </>
                     ) : (
-                        <File size={16} />
+                        <>
+                            <span style={{width: '12px', flexShrink: 0}} />
+                            <File size={16} />
+                        </>
                     )}
                     {isRenaming ? (
                         <input

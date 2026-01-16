@@ -125,7 +125,7 @@ body {
 .file-tree-item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     padding: 4px 8px;
     cursor: pointer;
     user-select: none;
@@ -327,11 +327,22 @@ body {
 }
 
 .markdown-preview pre {
-    background-color: var(--bg-tertiary);
-    padding: 16px;
+    margin-bottom: 16px;
     border-radius: 6px;
     overflow-x: auto;
-    margin-bottom: 16px;
+}
+
+.markdown-preview pre > div {
+    margin: 0 !important;
+    padding: 16px !important;
+    background-color: var(--bg-tertiary) !important;
+    border-radius: 6px !important;
+}
+
+.markdown-preview pre:has(.csv-table) {
+    background: none;
+    padding: 0;
+    margin: 0 0 16px 0;
 }
 
 .markdown-preview pre code {
@@ -363,6 +374,74 @@ body {
 
 .markdown-preview a:hover {
     text-decoration: underline;
+}
+
+.markdown-preview .mermaid-diagram {
+    margin: 16px 0;
+    text-align: center;
+    background-color: var(--bg-tertiary);
+    padding: 16px;
+    border-radius: 6px;
+}
+
+.markdown-preview .csv-table-container {
+    overflow-x: auto;
+}
+
+.markdown-preview .csv-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.9em;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.markdown-preview .csv-table th,
+.markdown-preview .csv-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.markdown-preview .csv-table th:last-child,
+.markdown-preview .csv-table td:last-child {
+    border-right: none;
+}
+
+.markdown-preview .csv-table tr:last-child td {
+    border-bottom: none;
+}
+
+.markdown-preview .csv-table thead tr:first-child th:first-child {
+    border-top-left-radius: 6px;
+}
+
+.markdown-preview .csv-table thead tr:first-child th:last-child {
+    border-top-right-radius: 6px;
+}
+
+.markdown-preview .csv-table tbody tr:last-child td:first-child {
+    border-bottom-left-radius: 6px;
+}
+
+.markdown-preview .csv-table tbody tr:last-child td:last-child {
+    border-bottom-right-radius: 6px;
+}
+
+.markdown-preview .csv-table th {
+    background-color: var(--bg-tertiary);
+    font-weight: 600;
+    color: var(--text-heading);
+}
+
+.markdown-preview .csv-table tr:nth-child(even) {
+    background-color: var(--bg-secondary);
+}
+
+.markdown-preview .csv-table tr:hover {
+    background-color: var(--bg-tertiary);
 }
 
 /* Empty State */

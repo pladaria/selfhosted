@@ -266,9 +266,54 @@ const moveVideoToFolder = (video: ParsedVideo, videoFolder: string) => {
     }
 };
 
+const moveSubtitles = (video: ParsedVideo, videoFolder: string) => {
+    const subtitleExtensions = ['srt', 'sub', 'ass', 'ssa', 'vtt', 'idx', 'smi'];
+    const baseRawName = video.raw.replace(/\.[^.\s]+$/, '');
+    const baseCleanName = video.clean.replace(/\.[^.\s]+$/, '');
+
+    // Search for subtitle files with or without language code
+    const incomingFiles = fs.readdirSync(values.incoming);
+    for (const file of incomingFiles) {
+        // Check if file starts with the base name
+        if (!file.startsWith(baseRawName)) continue;
+
+        // Extract the part after the base name
+        const suffix = file.slice(baseRawName.length);
+
+        // Check if it matches subtitle pattern: .ext or .lang.ext or .lang-code.ext
+        const subtitleMatch = suffix.match(/^(\.([a-z]{2,3})([_-][a-z]{2,3})?)?\.(\w+)$/i);
+        if (!subtitleMatch) continue;
+
+        const extension = subtitleMatch[4]!.toLowerCase();
+        if (!subtitleExtensions.includes(extension)) continue;
+
+        const languageCode = subtitleMatch[2] || '';
+        const destinationName = languageCode
+            ? `${baseCleanName}.${languageCode}.${extension}`
+            : `${baseCleanName}.${extension}`;
+
+        logAction(
+            `${values.link ? 'Link' : 'Move'} subtitle to: "${path.join(videoFolder, destinationName)}"`
+        );
+        if (!values.dryRun) {
+            const sourcePath = path.join(values.incoming, file);
+            const destPath = path.join(videoFolder, destinationName);
+            if (values.link) {
+                fs.linkSync(sourcePath, destPath);
+            } else {
+                fs.renameSync(sourcePath, destPath);
+            }
+        }
+    }
+};
+
 const processVideoFile = async (video: ParsedVideo) => {
     const videoFolder = path.join(values.moviesPath, video.folder);
     moveVideoToFolder(video, videoFolder);
+
+    // Move subtitle files
+    moveSubtitles(video, videoFolder);
+
     const meta = [
         '.nfo',
         '.trickplay',
@@ -303,13 +348,13 @@ const processVideoFile = async (video: ParsedVideo) => {
 };
 
 const isEpisodeFile = (filename: string): boolean => {
-    const lower = filename.toLowerCase();
+    const lower = filename.toLowerCase().replace(/_/g, ' ');
     // 01x02, 1x2...
-    if (lower.match(/\b\d{1,2}x\d{1,2}\b/)) {
+    if (lower.match(/\b\d{1,2}x\d{1,3}\b/)) {
         return true;
     }
     // S01E02, S1E2...
-    if (lower.match(/\bs\d{1,2}e\d{1,2}\b/)) {
+    if (lower.match(/\bs\d{1,2}e\d{1,3}\b/)) {
         return true;
     }
     return false;
@@ -336,7 +381,7 @@ const parseEpisodeFilename = async (filename: string) => {
     const extension = extensionMatch[0].slice(1);
 
     const clean = cleanTitle(raw);
-    const match = clean.match(/\bS(\d{1,2})E(\d{1,2})\b/i) || clean.match(/\b(\d{1,2})x(\d{1,2})\b/i);
+    const match = clean.match(/\bS(\d{1,2})E(\d{1,3})\b/i) || clean.match(/\b(\d{1,2})x(\d{1,3})\b/i);
     let season: number;
     let episode: number;
     if (!match) {
@@ -474,6 +519,9 @@ const parseEpisodeFilename = async (filename: string) => {
 const processEpisodeFile = async (video: ParsedVideo) => {
     const videoPath = path.join(values.seriesPath, video.folder);
     moveVideoToFolder(video, videoPath);
+
+    // Move subtitle files
+    moveSubtitles(video, videoPath);
 };
 
 const isFileAlreadyLinked = (file: string): boolean => {

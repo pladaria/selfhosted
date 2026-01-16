@@ -5,12 +5,11 @@ import {useTheme} from './ThemeContext';
 interface SettingsProps {
     isOpen: boolean;
     onClose: () => void;
-    onOpenSupabaseConfig: () => void;
 }
 
 type PersistenceBackend = 'local' | 'cloud';
 
-export const Settings: React.FC<SettingsProps> = ({isOpen, onClose, onOpenSupabaseConfig}) => {
+export const Settings: React.FC<SettingsProps> = ({isOpen, onClose}) => {
     const {theme, setTheme} = useTheme();
     const [backend, setBackend] = React.useState<PersistenceBackend>('local');
 
@@ -23,12 +22,13 @@ export const Settings: React.FC<SettingsProps> = ({isOpen, onClose, onOpenSupaba
     }, []);
 
     const handleBackendChange = (newBackend: PersistenceBackend) => {
-        if (newBackend === 'cloud') {
-            // Abrir configuración de Supabase
-            onOpenSupabaseConfig();
-        }
         setBackend(newBackend);
         localStorage.setItem('mdocs-backend', newBackend);
+
+        if (newBackend === 'cloud') {
+            // Recargar la página para cambiar el store
+            window.location.reload();
+        }
     };
 
     if (!isOpen) return null;

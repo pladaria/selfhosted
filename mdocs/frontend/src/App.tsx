@@ -3,10 +3,9 @@ import {FileTree} from './FileTree';
 import {CodeEditor, CodeEditorRef} from './CodeEditor';
 import {MarkdownEditor} from './MarkdownEditor';
 import {Settings} from './Settings';
-import {SupabaseConfig} from './SupabaseConfig';
 import {FileNode, FileSystemStore} from './types';
 import {LocalStorageStore} from './store';
-import {SupabaseStore} from './SupabaseStore';
+import {ApiStore} from './ApiStore';
 import {Eye, EyeOff, Sparkles, Settings as SettingsIcon, Plus, FolderPlus} from 'lucide-react';
 import './App.css';
 
@@ -16,7 +15,7 @@ function App() {
     const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
     const [showPreview, setShowPreview] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
-    const [showSupabaseConfig, setShowSupabaseConfig] = useState(false);
+    const [expandDirectoryId, setExpandDirectoryId] = useState<string | null>(null);
     const codeEditorRef = useRef<CodeEditorRef>(null);
 
     const handleFormat = () => {
@@ -37,21 +36,11 @@ function App() {
     useEffect(() => {
         const backend = localStorage.getItem('mdocs-backend') || 'local';
         if (backend === 'cloud') {
-            const url = localStorage.getItem('supabase-url');
-            const key = localStorage.getItem('supabase-key');
-            const userId = localStorage.getItem('supabase-user-id');
-
-            if (url && key && userId) {
-                try {
-                    const supabaseStore = new SupabaseStore(url, key, userId);
-                    setStore(supabaseStore);
-                } catch (error) {
-                    console.error('Error initializing Supabase store:', error);
-                    setStore(new LocalStorageStore());
-                }
-            } else {
-                // Si no hay configuración, volver a local
-                localStorage.setItem('mdocs-backend', 'local');
+            try {
+                const apiStore = new ApiStore();
+                setStore(apiStore);
+            } catch (error) {
+                console.error('Error initializing API store:', error);
                 setStore(new LocalStorageStore());
             }
         }
@@ -75,6 +64,10 @@ function App() {
         if (name) {
             await store.createFile(parentId, name, type);
             await loadTree();
+            if (parentId) {
+                setExpandDirectoryId(parentId);
+                setTimeout(() => setExpandDirectoryId(null), 100);
+            }
         }
     };
 
@@ -108,18 +101,6 @@ function App() {
         }
     };
 
-    const handleSupabaseConfigSave = (url: string, key: string, userId: string) => {
-        try {
-            const supabaseStore = new SupabaseStore(url, key, userId);
-            setStore(supabaseStore);
-            setSelectedFile(null);
-            loadTree();
-        } catch (error) {
-            console.error('Error configuring Supabase:', error);
-            alert('Error al configurar Supabase. Verifica tus credenciales.');
-        }
-    };
-
     return (
         <div className="app">
             <div className="sidebar">
@@ -141,9 +122,11 @@ function App() {
                     nodes={tree}
                     selectedFileId={selectedFile?.id || null}
                     onSelectFile={handleSelectFile}
+                    onCreateFile={handleCreateFile}
                     onRename={handleRename}
                     onDelete={handleDelete}
                     onMove={handleMove}
+                    expandDirectoryId={expandDirectoryId}
                 />
             </div>
             <div className="main-content">
@@ -192,19 +175,7 @@ function App() {
                     </div>
                 )}
             </div>
-            <Settings
-                isOpen={showSettings}
-                onClose={() => setShowSettings(false)}
-                onOpenSupabaseConfig={() => {
-                    setShowSettings(false);
-                    setShowSupabaseConfig(true);
-                }}
-            />
-            <SupabaseConfig
-                isOpen={showSupabaseConfig}
-                onClose={() => setShowSupabaseConfig(false)}
-                onSave={handleSupabaseConfigSave}
-            />
+            <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
         </div>
     );
 }

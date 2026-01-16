@@ -1,0 +1,33 @@
+{
+    "name": "mdocs",
+    "private": true,
+    "version": "0.0.1",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "dev:api": "cd server && npm start",
+        "build": "tsc && vite build",
+        "preview": "vite preview",
+        "docker:build": "docker build -t pladaria/mdocs:latest .",
+        "docker:publish": "docker push pladaria/mdocs:latest"
+    },
+    "dependencies": {
+        "@monaco-editor/react": "^4.6.0",
+        "@types/react-syntax-highlighter": "^15.5.13",
+        "lucide-react": "^0.344.0",
+        "mermaid": "^11.12.2",
+        "prettier": "^3.7.4",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-markdown": "^9.0.1",
+        "react-syntax-highlighter": "^16.1.0"
+    },
+    "devDependencies": {
+        "@types/react": "^18.3.1",
+        "@types/react-dom": "^18.3.0",
+        "@vitejs/plugin-react": "^4.3.0",
+        "typescript": "^5.4.5",
+        "vite": "^5.2.11"
+    },
+    "packageManager": "pnpm@10.15.0+sha1.8e43a0b959a228ea479539575a66f5eafc89023a"
+}
