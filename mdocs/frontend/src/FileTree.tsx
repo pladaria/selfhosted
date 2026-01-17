@@ -10,7 +10,59 @@ import {
     FolderPlus,
     ChevronRight,
     ChevronDown,
+    FileText,
+    FileCode,
+    FileJson,
+    Image,
+    FileCheck,
 } from 'lucide-react';
+
+const getFileIcon = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+
+    switch (ext) {
+        case 'md':
+        case 'markdown':
+        case 'txt':
+            return FileText;
+        case 'js':
+        case 'jsx':
+        case 'ts':
+        case 'tsx':
+        case 'py':
+        case 'java':
+        case 'cpp':
+        case 'c':
+        case 'go':
+        case 'rs':
+        case 'php':
+        case 'rb':
+        case 'swift':
+        case 'kt':
+        case 'html':
+        case 'htm':
+        case 'xml':
+            return FileCode;
+        case 'json':
+        case 'jsonc':
+            return FileJson;
+        case 'png':
+        case 'jpg':
+        case 'jpeg':
+        case 'gif':
+        case 'svg':
+        case 'webp':
+        case 'ico':
+            return Image;
+        case 'css':
+        case 'scss':
+        case 'sass':
+        case 'less':
+            return FileCheck;
+        default:
+            return File;
+    }
+};
 
 interface FileTreeProps {
     nodes: FileNode[];
@@ -183,7 +235,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
                     ) : (
                         <>
                             <span style={{width: '12px', flexShrink: 0}} />
-                            <File size={16} />
+                            {React.createElement(getFileIcon(node.name), {size: 16})}
                         </>
                     )}
                     {isRenaming ? (

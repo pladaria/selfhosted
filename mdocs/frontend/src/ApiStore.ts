@@ -4,8 +4,11 @@ const API_BASE_URL = 'http://localhost:3001/api';
 
 export class ApiStore implements FileSystemStore {
     private async request(endpoint: string, options?: RequestInit): Promise<any> {
+        const url = `${API_BASE_URL}${endpoint}`;
+        console.log('API request to:', url);
+
         try {
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            const response = await fetch(url, {
                 ...options,
                 headers: {
                     'Content-Type': 'application/json',
@@ -13,13 +16,22 @@ export class ApiStore implements FileSystemStore {
                 },
             });
 
+            console.log('API response status:', response.status);
+
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            return await response.json();
+            const data = await response.json();
+            console.log('API response data:', data);
+            return data;
         } catch (error) {
             console.error('API request error:', error);
+            console.error('Error details:', {
+                url,
+                message: error instanceof Error ? error.message : 'Unknown error',
+                name: error instanceof Error ? error.name : 'Unknown',
+            });
             throw error;
         }
     }

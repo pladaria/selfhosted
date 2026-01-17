@@ -234,9 +234,23 @@ app.delete('/api/files/:id', async (req, res) => {
 });
 
 // Iniciar servidor
-ensureBaseDir().then(() => {
-    app.listen(PORT, () => {
-        console.log(`MDocs API Server running on http://localhost:${PORT}`);
-        console.log(`Base path: ${BASE_PATH}`);
+ensureBaseDir()
+    .then(() => {
+        app.listen(PORT, () => {
+            console.log(`MDocs API Server running on http://localhost:${PORT}`);
+            console.log(`Base path: ${BASE_PATH}`);
+        });
+    })
+    .catch((error) => {
+        console.error('Fatal error starting server:', error);
+        process.exit(1);
     });
+
+// Manejo de errores no capturados
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });

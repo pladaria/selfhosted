@@ -3,6 +3,7 @@ import {FileTree} from './FileTree';
 import {CodeEditor, CodeEditorRef} from './CodeEditor';
 import {MarkdownEditor} from './MarkdownEditor';
 import {Settings} from './Settings';
+import {ResizablePanel} from './ResizablePanel';
 import {FileNode, FileSystemStore} from './types';
 import {LocalStorageStore} from './store';
 import {ApiStore} from './ApiStore';
@@ -103,78 +104,95 @@ function App() {
 
     return (
         <div className="app">
-            <div className="sidebar">
-                <div className="app-header">
-                    <h1>MDocs</h1>
-                    <div className="app-header-actions">
-                        <button onClick={() => setShowSettings(true)} title="Preferencias">
-                            <SettingsIcon size={16} />
-                        </button>
-                        <button onClick={() => handleCreateFile(null, 'file')} title="Nuevo archivo">
-                            <Plus size={16} />
-                        </button>
-                        <button onClick={() => handleCreateFile(null, 'directory')} title="Nueva carpeta">
-                            <FolderPlus size={16} />
-                        </button>
-                    </div>
-                </div>
-                <FileTree
-                    nodes={tree}
-                    selectedFileId={selectedFile?.id || null}
-                    onSelectFile={handleSelectFile}
-                    onCreateFile={handleCreateFile}
-                    onRename={handleRename}
-                    onDelete={handleDelete}
-                    onMove={handleMove}
-                    expandDirectoryId={expandDirectoryId}
-                />
-            </div>
-            <div className="main-content">
-                {selectedFile ? (
-                    <>
-                        <div className="editor-header">
-                            <h2>{selectedFile.name}</h2>
-                            <div className="editor-actions">
-                                <button
-                                    className="format-button"
-                                    onClick={handleFormat}
-                                    title="Formatear código (Shift+Alt+F)"
-                                >
-                                    <Sparkles size={18} />
+            <ResizablePanel
+                storageKey="mdocs-sidebar-width"
+                defaultLeftWidth={20}
+                minLeftWidth={15}
+                maxLeftWidth={40}
+                leftPanel={
+                    <div className="sidebar">
+                        <div className="app-header">
+                            <h1>MDocs</h1>
+                            <div className="app-header-actions">
+                                <button onClick={() => setShowSettings(true)} title="Preferencias">
+                                    <SettingsIcon size={16} />
                                 </button>
-                                {selectedFile.name.endsWith('.md') && (
-                                    <button
-                                        className="toggle-preview"
-                                        onClick={() => setShowPreview(!showPreview)}
-                                        title={showPreview ? 'Ocultar vista previa' : 'Mostrar vista previa'}
-                                    >
-                                        {showPreview ? <EyeOff size={18} /> : <Eye size={18} />}
-                                    </button>
-                                )}
+                                <button onClick={() => handleCreateFile(null, 'file')} title="Nuevo archivo">
+                                    <Plus size={16} />
+                                </button>
+                                <button
+                                    onClick={() => handleCreateFile(null, 'directory')}
+                                    title="Nueva carpeta"
+                                >
+                                    <FolderPlus size={16} />
+                                </button>
                             </div>
                         </div>
-                        {selectedFile.name.endsWith('.md') ? (
-                            <MarkdownEditor
-                                ref={codeEditorRef}
-                                file={selectedFile}
-                                onChange={handleContentChange}
-                                showPreview={showPreview}
-                            />
-                        ) : (
-                            <CodeEditor
-                                ref={codeEditorRef}
-                                file={selectedFile}
-                                onChange={handleContentChange}
-                            />
-                        )}
-                    </>
-                ) : (
-                    <div className="empty-state">
-                        <h2>Welcome to MDocs</h2>
-                        <p>Select a file from the left panel or create a new one.</p>
+                        <FileTree
+                            nodes={tree}
+                            selectedFileId={selectedFile?.id || null}
+                            onSelectFile={handleSelectFile}
+                            onCreateFile={handleCreateFile}
+                            onRename={handleRename}
+                            onDelete={handleDelete}
+                            onMove={handleMove}
+                            expandDirectoryId={expandDirectoryId}
+                        />
                     </div>
-                )}
-            </div>
+                }
+                rightPanel={
+                    <div className="main-content">
+                        {selectedFile ? (
+                            <>
+                                <div className="editor-header">
+                                    <h2>{selectedFile.name}</h2>
+                                    <div className="editor-actions">
+                                        <button
+                                            className="format-button"
+                                            onClick={handleFormat}
+                                            title="Formatear código (Shift+Alt+F)"
+                                        >
+                                            <Sparkles size={18} />
+                                        </button>
+                                        {selectedFile.name.endsWith('.md') && (
+                                            <button
+                                                className="toggle-preview"
+                                                onClick={() => setShowPreview(!showPreview)}
+                                                title={
+                                                    showPreview
+                                                        ? 'Ocultar vista previa'
+                                                        : 'Mostrar vista previa'
+                                                }
+                                            >
+                                                {showPreview ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                {selectedFile.name.endsWith('.md') ? (
+                                    <MarkdownEditor
+                                        ref={codeEditorRef}
+                                        file={selectedFile}
+                                        onChange={handleContentChange}
+                                        showPreview={showPreview}
+                                    />
+                                ) : (
+                                    <CodeEditor
+                                        ref={codeEditorRef}
+                                        file={selectedFile}
+                                        onChange={handleContentChange}
+                                    />
+                                )}
+                            </>
+                        ) : (
+                            <div className="empty-state">
+                                <h2>Welcome to MDocs</h2>
+                                <p>Select a file from the left panel or create a new one.</p>
+                            </div>
+                        )}
+                    </div>
+                }
+            />
             <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
         </div>
     );

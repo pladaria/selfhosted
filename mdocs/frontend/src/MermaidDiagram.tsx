@@ -1,25 +1,22 @@
 import {useEffect, useRef} from 'react';
 import mermaid from 'mermaid';
+import {useTheme} from './ThemeContext';
 
 interface MermaidDiagramProps {
     chart: string;
 }
 
-let mermaidInitialized = false;
-
 export const MermaidDiagram = ({chart}: MermaidDiagramProps) => {
     const ref = useRef<HTMLDivElement>(null);
+    const {resolvedTheme} = useTheme();
 
     useEffect(() => {
-        if (!mermaidInitialized) {
-            mermaid.initialize({
-                startOnLoad: false,
-                theme: 'default',
-                securityLevel: 'loose',
-            });
-            mermaidInitialized = true;
-        }
-    }, []);
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: resolvedTheme === 'dark' ? 'dark' : 'default',
+            securityLevel: 'loose',
+        });
+    }, [resolvedTheme]);
 
     useEffect(() => {
         if (ref.current && chart) {
