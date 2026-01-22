@@ -336,8 +336,8 @@ const processVideoFile = async (video: ParsedVideo) => {
                 suffix === '.nfo'
                     ? 'movie.nfo'
                     : suffix === '.trickplay'
-                    ? `${baseCleanName}.trickplay`
-                    : suffix.replace('-', '')
+                      ? `${baseCleanName}.trickplay`
+                      : suffix.replace('-', '')
             );
             logAction(`Move ${suffix} to: "${path.join(videoFolder, destinationName)}"`);
             if (!values.dryRun) {
@@ -483,15 +483,21 @@ const parseEpisodeFilename = async (filename: string) => {
             episodeNumber: episode,
         })}`
     );
-    const episodeInfo = await tmdb.tvEpisode.details(
-        {
-            tvShowID: show.id,
-            seasonNumber: season,
-            episodeNumber: episode,
-        },
-        undefined,
-        {language: TMDB_LANG as never}
-    );
+
+    let episodeInfo;
+    try {
+        episodeInfo = await tmdb.tvEpisode.details(
+            {
+                tvShowID: show.id,
+                seasonNumber: season,
+                episodeNumber: episode,
+            },
+            undefined,
+            {language: TMDB_LANG as never}
+        );
+    } catch (error) {
+        // ignore
+    }
     if (!episodeInfo) {
         logError(`TV episode not found`);
         return null;
