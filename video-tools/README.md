@@ -74,11 +74,6 @@ apt install ffmpeg mkvtoolnix
 # Install dovi_tool from https://github.com/quietvoid/dovi_tool
 ```
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. All code, comments, and documentation must be written
-in English.
-
 ## License
 
 WTFPL - Do What The Fuck You Want To Public License
