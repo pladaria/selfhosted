@@ -5,16 +5,86 @@ import {spawnSync} from 'child_process';
 const FRAMES_TO_EXTRACT = 100;
 const FRAME_TO_ANALYZE = 99;
 
-// Recursively find .mkv files with "Dolby Vision" in the name
-function findDolbyVisionMKVs(dir: string): string[] {
+function showHelp() {
+    console.log(`
+Usage: bun dolby-vision-offsets.ts [OPTIONS] <directory>
+
+Report non-zero active area offsets in Dolby Vision MKV files.
+
+Recursively scans a directory for MKV files containing "Dolby Vision"
+in the filename and reports their Level 5 active area offsets. Non-zero
+offsets indicate the presence of letterbox bars that can be cropped
+using the crop-dolby-vision-mkv.ts script.
+
+Arguments:
+  <directory>    Directory to scan for Dolby Vision MKV files
+
+Options:
+  -h, --help     Show this help message and exit
+
+Output:
+  Prints filename and L5 offsets for each file with non-zero offsets.
+  L5 offsets format: left, right, top, bottom (in pixels)
+
+Requirements:
+  - ffmpeg: Extract video stream
+  - dovi_tool: Extract and analyze RPU metadata
+`);
+}
+
+// Check if an MKV file has Dolby Vision metadata using ffprobe
+function hasDolbyVision(filePath: string): boolean {
+    const probeCmd = [
+        'ffprobe',
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-print_format',
+        'json',
+        '-show_streams',
+        filePath,
+    ];
+
+    const result = spawnSync(probeCmd[0]!, probeCmd.slice(1), {encoding: 'utf-8'});
+
+    if (result.error || result.status !== 0) {
+        return false;
+    }
+
+    try {
+        const data = JSON.parse(result.stdout);
+        if (data.streams && data.streams[0]) {
+            const stream = data.streams[0];
+
+            // Only check for Dolby Vision in HEVC streams
+            if (stream.codec_name !== 'hevc') {
+                return false;
+            }
+
+            if (stream.side_data_list) {
+                return stream.side_data_list.some(
+                    (item: any) => item.side_data_type === 'DOVI configuration record'
+                );
+            }
+        }
+    } catch (e) {
+        return false;
+    }
+
+    return false;
+}
+
+// Recursively find all .mkv files
+function findMKVFiles(dir: string): string[] {
     let results: string[] = [];
     const list = fs.readdirSync(dir);
     for (const file of list) {
         const fullPath = path.join(dir, file);
         const stat = fs.statSync(fullPath);
         if (stat.isDirectory()) {
-            results = results.concat(findDolbyVisionMKVs(fullPath));
-        } else if (file.toLowerCase().endsWith('.mkv') && file.toLowerCase().includes('dolby vision')) {
+            results = results.concat(findMKVFiles(fullPath));
+        } else if (file.toLowerCase().endsWith('.mkv')) {
             results.push(fullPath);
         }
     }
@@ -44,7 +114,7 @@ function getLevel5OffsetsFromMKV(filePath: string): string | null {
         hevcPath,
     ];
     // console.log(`Executing: ${ffmpegCmd.join(' ')}`);
-    let result = spawnSync(ffmpegCmd[0], ffmpegCmd.slice(1), {encoding: 'utf-8'});
+    let result = spawnSync(ffmpegCmd[0]!, ffmpegCmd.slice(1), {encoding: 'utf-8'});
 
     if (result.error || result.status !== 0) {
         console.error(`Error extracting HEVC for ${filePath}:`, result.error || result.stderr);
@@ -63,7 +133,7 @@ function getLevel5OffsetsFromMKV(filePath: string): string | null {
         FRAMES_TO_EXTRACT.toString(),
     ];
     // console.log(`Executing: ${extractCmd.join(' ')}`);
-    result = spawnSync(extractCmd[0], extractCmd.slice(1), {encoding: 'utf-8'});
+    result = spawnSync(extractCmd[0]!, extractCmd.slice(1), {encoding: 'utf-8'});
 
     if (result.error || result.status !== 0) {
         console.error(`Error extracting RPU for ${filePath}:`, result.error || result.stderr);
@@ -73,7 +143,7 @@ function getLevel5OffsetsFromMKV(filePath: string): string | null {
     // 3. Get summary info for the RPU file (analyze FRAME_TO_ANALYZE)
     const infoCmd = ['dovi_tool', 'info', '-i', rpuPath, '-f', FRAME_TO_ANALYZE.toString(), '-s'];
     // console.log(`Executing: ${infoCmd.join(' ')}`);
-    result = spawnSync(infoCmd[0], infoCmd.slice(1), {encoding: 'utf-8'});
+    result = spawnSync(infoCmd[0]!, infoCmd.slice(1), {encoding: 'utf-8'});
 
     if (result.error || result.status !== 0) {
         console.error(`Error running dovi_tool info for ${filePath}:`, result.error || result.stderr);
@@ -88,33 +158,59 @@ function getLevel5OffsetsFromMKV(filePath: string): string | null {
     return null;
 }
 
+// Clear the current line using ANSI escape code
+function clearLine() {
+    process.stdout.write('\x1b[2K\r');
+}
+
 // Main
 function main() {
     const dir = process.argv[2];
-    if (!dir) {
-        console.error('Usage: node index.js <directory>');
-        process.exit(1);
+    if (!dir || dir === '-h' || dir === '--help') {
+        showHelp();
+        process.exit(dir ? 0 : 1);
     }
 
-    const files = findDolbyVisionMKVs(dir);
+    const files = findMKVFiles(dir);
     if (files.length === 0) {
-        console.log('No Dolby Vision MKV files found.');
+        console.log('No MKV files found.');
         return;
     }
 
     for (const file of files) {
+        const fileName = path.basename(file);
+        // Write without newline so we can overwrite if no offsets
+        process.stdout.write(`Inspecting: ${fileName}`);
+
+        const hasDV = hasDolbyVision(file);
+        if (!hasDV) {
+            clearLine();
+            continue;
+        }
+
         const offsets = getLevel5OffsetsFromMKV(file);
-        // Only print if offsets exist and are not all zero or N/A
+        if (!offsets) {
+            clearLine();
+            continue;
+        }
+
+        // Check if offsets are all zero or N/A
         if (
-            offsets &&
-            offsets !== 'L5 offsets: top=0, bottom=0, left=0, right=0' &&
-            offsets !== 'L5 offsets: top=N/A, bottom=N/A, left=N/A, right=N/A'
+            offsets === 'L5 offsets: top=0, bottom=0, left=0, right=0' ||
+            offsets === 'L5 offsets: top=N/A, bottom=N/A, left=N/A, right=N/A'
         ) {
-            console.log(`File: ${path.basename(file)}`);
-            console.log(`Offsets: ${offsets}`);
+            clearLine();
+            continue;
+        } else {
+            // Keep the line and add details
+            console.log(''); // New line after the filename
+            console.log(`  ${offsets}`);
             console.log('');
         }
     }
+
+    // Ensure cursor is on a new line at the end
+    console.log('');
 }
 
 main();
