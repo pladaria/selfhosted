@@ -2,12 +2,21 @@
 
 Collection of TypeScript utilities for processing video files with Dolby Vision metadata.
 
+## Index
+
+- [crop-dolby-vision-mkv.ts](#crop-dolby-vision-mkvts) - Fix Dolby Vision metadata after cropping letterbox
+  bars
+- [dolby-vision-offsets.ts](#dolby-vision-offsetsts) - Identify files with incorrect Dolby Vision active area
+  offsets
+- [video-catalog.ts](#video-catalogts) - Generate CSV catalog of video files with metadata
+
 ## Scripts
 
 ### crop-dolby-vision-mkv.ts
 
-Crops Dolby Vision active layer from HEVC-encoded MKV files by setting active area offsets to zero. This
-removes letterbox bars while preserving all streams and metadata.
+Fixes Dolby Vision metadata for files where letterbox bars have been physically cropped but the active area
+offsets still reference the removed padding. Sets all offsets to zero, preventing playback issues on Dolby
+Vision-capable devices.
 
 **Usage:**
 
@@ -49,13 +58,39 @@ bun dolby-vision-offsets.ts <directory>
 - Real-time progress display with clearable lines
 - Reports only files with non-zero offsets
 
-**Output:** Lists files with letterbox bars that can be processed with crop-dolby-vision-mkv.ts.
+**Output:** Lists files with Dolby Vision active area padding that can be corrected with
+crop-dolby-vision-mkv.ts.
 
 **Requirements:**
 
 - ffprobe
 - ffmpeg
 - dovi_tool
+
+### video-catalog.ts
+
+Scans directories recursively to generate a CSV catalog of video files with detailed metadata.
+
+**Usage:**
+
+```bash
+bun video-catalog.ts <directory> > output.csv
+```
+
+**Features:**
+
+- Detects video codec, profile, and bit depth
+- Identifies HDR formats (HDR10, HDR10+, Dolby Vision, HLG, BT.2020)
+- Extracts audio codec and channel configuration
+- Reports resolution, duration, bitrate, FPS, and file size
+- Outputs CSV format to stdout for easy redirection
+
+**Output:** CSV with columns: relative_path, codec, profile, bit_depth, hdr, resolution, audio, duration,
+bitrate, fps, file_size.
+
+**Requirements:**
+
+- ffprobe
 
 ## Installation
 

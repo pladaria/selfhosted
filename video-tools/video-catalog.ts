@@ -3,7 +3,6 @@
 import {execSync} from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as XLSX from 'xlsx';
 import {parseArgs} from 'util';
 
 interface VideoInfo {
@@ -11,7 +10,7 @@ interface VideoInfo {
     codec: string;
     profile: string;
     bitDepth: string;
-    hdr: string; // Changed from boolean to string
+    hdr: string;
     resolution: string;
     audio: string;
     duration: string;
@@ -98,32 +97,53 @@ function getVideoInfo(filePath: string, basePath: string): VideoInfo | null {
             const colorTransfer = videoStream.color_transfer;
             const colorSpace = videoStream.color_space;
             const colorPrimaries = videoStream.color_primaries;
+            const sideData = videoStream.side_data_list || [];
 
-            // Check for HDR10+ (dynamic metadata)
-            if (
-                videoStream.side_data_list?.some(
-                    (sd: any) =>
-                        sd.side_data_type === 'HDR dynamic metadata SMPTE2094-40 (HDR10+)' ||
-                        sd.side_data_type === 'Dynamic HDR10+'
-                )
-            ) {
-                return 'HDR10+';
-            }
-
-            // Check for Dolby Vision
-            if (
-                videoStream.side_data_list?.some(
-                    (sd: any) =>
-                        sd.side_data_type === 'DOVI configuration record' ||
-                        sd.side_data_type === 'Dolby Vision RPU'
-                )
-            ) {
+            // Check for Dolby Vision (highest priority)
+            const hasDolbyVision = sideData.some(
+                (sd: any) =>
+                    sd.side_data_type === 'DOVI configuration record' ||
+                    sd.side_data_type === 'Dolby Vision RPU' ||
+                    sd.side_data_type?.includes('DOVI') ||
+                    sd.side_data_type?.includes('Dolby')
+            );
+            if (hasDolbyVision) {
                 return 'Dolby Vision';
             }
 
-            // Check for HDR10 (PQ transfer function)
+            // Check for HDR Vivid (CUVA dynamic metadata)
+            const hasHdrVivid = sideData.some(
+                (sd: any) =>
+                    sd.side_data_type === 'HDR dynamic metadata CUVA' ||
+                    sd.side_data_type?.includes('CUVA') ||
+                    sd.side_data_type?.includes('Vivid')
+            );
+            if (hasHdrVivid) {
+                return 'HDR Vivid';
+            }
+
+            // Check for HDR10+ (dynamic metadata)
+            const hasHdr10Plus = sideData.some(
+                (sd: any) =>
+                    sd.side_data_type === 'HDR dynamic metadata SMPTE2094-40 (HDR10+)' ||
+                    sd.side_data_type === 'Dynamic HDR10+' ||
+                    sd.side_data_type?.includes('SMPTE2094-40')
+            );
+            if (hasHdr10Plus) {
+                return 'HDR10+';
+            }
+
+            // Check for HDR10 (PQ transfer function with static metadata)
             if (colorTransfer === 'smpte2084') {
-                return 'HDR10';
+                // Verify it has HDR static metadata
+                const hasHdrStaticMetadata = sideData.some(
+                    (sd: any) =>
+                        sd.side_data_type === 'Mastering display metadata' ||
+                        sd.side_data_type === 'Content light level metadata'
+                );
+                if (hasHdrStaticMetadata || sideData.length === 0) {
+                    return 'HDR10';
+                }
             }
 
             // Check for HLG (Hybrid Log-Gamma)
@@ -131,7 +151,7 @@ function getVideoInfo(filePath: string, basePath: string): VideoInfo | null {
                 return 'HLG';
             }
 
-            // Check for BT.2020 color space (might indicate HDR)
+            // Check for BT.2020 color space (might indicate HDR but without proper metadata)
             if (colorSpace === 'bt2020nc' || colorPrimaries === 'bt2020') {
                 return 'BT.2020';
             }
@@ -151,11 +171,28 @@ function getVideoInfo(filePath: string, basePath: string): VideoInfo | null {
         const profile = videoStream.profile || 'unknown';
 
         // Determine bit depth from pix_fmt or bits_per_raw_sample
-        let bitDepth = videoStream.bits_per_raw_sample || '8'; // Default to 8 if not specified
+        let bitDepth = videoStream.bits_per_raw_sample || '8';
         if (videoStream.pix_fmt?.includes('10')) {
             bitDepth = '10';
         } else if (videoStream.pix_fmt?.includes('12')) {
             bitDepth = '12';
+        }
+
+        // Calculate FPS safely from r_frame_rate (format: "num/den")
+        function calculateFps(frameRate: string): string {
+            try {
+                const parts = frameRate.split('/');
+                if (parts.length === 2) {
+                    const num = Number(parts[0]);
+                    const den = Number(parts[1]);
+                    if (!isNaN(num) && !isNaN(den) && den !== 0) {
+                        return (num / den).toFixed(2);
+                    }
+                }
+                return frameRate;
+            } catch {
+                return 'unknown';
+            }
         }
 
         return {
@@ -163,14 +200,14 @@ function getVideoInfo(filePath: string, basePath: string): VideoInfo | null {
             codec: codecName,
             profile: profile,
             bitDepth: `${bitDepth}-bit`,
-            hdr: detectHdrFormat(), // Now returns the format string directly
+            hdr: detectHdrFormat(),
             resolution: getResolutionLabel(videoStream.width),
             audio: audioInfo,
             duration: data.format?.duration ? `${Math.round(parseFloat(data.format.duration))}s` : 'unknown',
             bitrate: data.format?.bit_rate
                 ? `${Math.round(parseInt(data.format.bit_rate) / 1000)}kbps`
                 : 'unknown',
-            fps: videoStream.r_frame_rate ? eval(videoStream.r_frame_rate).toFixed(2) : 'unknown',
+            fps: videoStream.r_frame_rate ? calculateFps(videoStream.r_frame_rate) : 'unknown',
             fileSize: `${(stats.size / 1024 / 1024 / 1024).toFixed(2)} GB`,
         };
     } catch (error) {
@@ -205,79 +242,16 @@ function outputCsv(videoInfos: VideoInfo[]) {
     }
 }
 
-function outputExcel(videoInfos: VideoInfo[], outputPath: string) {
-    // Create a new workbook
-    const workbook = XLSX.utils.book_new();
-
-    // Prepare data for the worksheet
-    const worksheetData = [
-        [
-            'Relative Path',
-            'Codec',
-            'Profile',
-            'Bit Depth',
-            'HDR',
-            'Resolution',
-            'Audio',
-            'Duration',
-            'Bitrate',
-            'FPS',
-            'File Size',
-        ],
-        ...videoInfos.map((info) => [
-            info.relativePath,
-            info.codec,
-            info.profile,
-            info.bitDepth,
-            info.hdr,
-            info.resolution,
-            info.audio,
-            info.duration,
-            info.bitrate,
-            info.fps,
-            info.fileSize,
-        ]),
-    ];
-
-    // Create worksheet
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-
-    // Auto-size columns
-    const colWidths = [];
-    for (let i = 0; i < (worksheetData?.[0]?.length || 0); i++) {
-        const maxWidth = Math.max(...worksheetData.map((row) => (row[i] || '').toString().length));
-        colWidths.push({width: Math.min(maxWidth + 2, 50)});
-    }
-    worksheet['!cols'] = colWidths;
-
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Video Catalog');
-
-    // Write the file
-    XLSX.writeFile(workbook, outputPath);
-    console.error(`Excel file saved to: ${outputPath}`, {stream: process.stderr});
-}
-
 function main() {
-    const {values, positionals} = parseArgs({
+    const {positionals} = parseArgs({
         args: process.argv.slice(2),
-        options: {
-            excel: {
-                type: 'string',
-                short: 'x',
-            },
-        },
         allowPositionals: true,
     });
 
     const inputPath = positionals[0];
-    const outputFormat: 'csv' | 'excel' = values.excel !== undefined ? 'excel' : 'csv';
-    const outputPath = values.excel || '';
 
     if (!inputPath) {
-        console.error('Usage: tsx video-catalog.ts <directory_path> [--excel|-x <output_file.xlsx>]');
-        console.error('  --excel, -x: Output in Excel format to the specified file.');
-        console.error('               If not provided, outputs CSV to stdout.');
+        console.error('Usage: bun video-catalog.ts <directory_path>');
         process.exit(1);
     }
 
@@ -299,11 +273,7 @@ function main() {
     // Sort videoInfos by relativePath
     videoInfos.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 
-    if (outputFormat === 'excel') {
-        outputExcel(videoInfos, outputPath);
-    } else {
-        outputCsv(videoInfos);
-    }
+    outputCsv(videoInfos);
 }
 
 main();
