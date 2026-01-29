@@ -142,8 +142,10 @@ function detectBitDepth(stream: FFProbeStream): string {
 
 function calculateFps(frameRate: string): string {
     try {
-        const [num, den] = frameRate.split('/').map(Number);
-        if (!isNaN(num) && !isNaN(den) && den !== 0) {
+        const parts = frameRate.split('/').map(Number);
+        const num = parts[0];
+        const den = parts[1];
+        if (num !== undefined && den !== undefined && !isNaN(num) && !isNaN(den) && den !== 0) {
             return (num / den).toFixed(2);
         }
         return frameRate;
