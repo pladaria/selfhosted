@@ -4,13 +4,14 @@ import {execSync} from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import {parseArgs} from 'util';
+import ExcelJS from 'exceljs';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 interface VideoInfo {
-    relativePath: string;
+    filename: string;
     codec: string;
     profile: string;
     bitDepth: string;
@@ -77,6 +78,24 @@ const HDR_METADATA = {
     HDR10_PLUS: ['HDR dynamic metadata SMPTE2094-40 (HDR10+)', 'Dynamic HDR10+', 'SMPTE2094-40', 'HDR10+'],
     STATIC_METADATA: ['Mastering display metadata', 'Content light level metadata'],
 } as const;
+
+const HELP_TEXT = `
+Video Catalog - Analyze video files and generate a catalog
+
+Usage:
+  bun video-catalog.ts <directory_path> [options]
+
+Options:
+  -o, --output <file>   Output file (format detected from extension: .csv or .xlsx)
+                        If not specified, outputs CSV to stdout
+  -h, --help           Show this help message
+
+Examples:
+  bun video-catalog.ts /path/to/videos
+  bun video-catalog.ts /path/to/videos > catalog.csv
+  bun video-catalog.ts /path/to/videos --output catalog.xlsx
+  bun video-catalog.ts /path/to/videos -o my-videos.csv
+`;
 
 // ============================================================================
 // File System
@@ -160,6 +179,13 @@ function getResolutionLabel(width: number): string {
     if (width >= 1260) return '720p';
     if (width >= 840) return '480p';
     return 'SD';
+}
+
+function formatDuration(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
 // ============================================================================
@@ -260,14 +286,14 @@ function getVideoInfo(filePath: string, basePath: string): VideoInfo | null {
         const stats = fs.statSync(filePath);
 
         return {
-            relativePath: path.relative(basePath, filePath),
+            filename: path.basename(filePath),
             codec: (videoStream.codec_name || '???').toUpperCase(),
             profile: videoStream.profile || 'unknown',
             bitDepth: `${detectBitDepth(videoStream)}-bit`,
             hdr: detectHdrFormat(videoStream, filePath),
             resolution: getResolutionLabel(videoStream.width || 0),
             audio: analyzeAudioStreams(data.streams),
-            duration: data.format?.duration ? `${Math.round(parseFloat(data.format.duration))}s` : 'unknown',
+            duration: data.format?.duration ? formatDuration(parseFloat(data.format.duration)) : 'unknown',
             bitrate: data.format?.bit_rate
                 ? `${(parseInt(data.format.bit_rate) / 1000000).toFixed(2)}Mbps`
                 : 'unknown',
@@ -281,7 +307,7 @@ function getVideoInfo(filePath: string, basePath: string): VideoInfo | null {
 }
 
 // ============================================================================
-// CSV Output
+// Output Formatters
 // ============================================================================
 
 function escapeCsv(str: string): string {
@@ -289,12 +315,12 @@ function escapeCsv(str: string): string {
 }
 
 function outputCsv(videoInfos: VideoInfo[]): void {
-    console.log('relative_path,codec,profile,bit_depth,hdr,resolution,audio,duration,bitrate,fps,file_size');
+    console.log('filename,codec,profile,bit_depth,hdr,resolution,audio,duration,bitrate,fps,file_size');
 
     for (const info of videoInfos) {
         console.log(
             [
-                escapeCsv(info.relativePath),
+                escapeCsv(info.filename),
                 info.codec,
                 info.profile,
                 info.bitDepth,
@@ -310,20 +336,125 @@ function outputCsv(videoInfos: VideoInfo[]): void {
     }
 }
 
+function outputCsvFile(videoInfos: VideoInfo[], outputPath: string): void {
+    const lines = ['filename,codec,profile,bit_depth,hdr,resolution,audio,duration,bitrate,fps,file_size'];
+
+    for (const info of videoInfos) {
+        lines.push(
+            [
+                escapeCsv(info.filename),
+                info.codec,
+                info.profile,
+                info.bitDepth,
+                info.hdr,
+                info.resolution,
+                escapeCsv(info.audio),
+                info.duration,
+                info.bitrate,
+                info.fps,
+                info.fileSize,
+            ].join(',')
+        );
+    }
+
+    fs.writeFileSync(outputPath, lines.join('\n') + '\n');
+    console.log(`CSV file saved: ${outputPath}`);
+}
+
+async function outputExcel(videoInfos: VideoInfo[], outputPath: string): Promise<void> {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Video Catalog');
+
+    // Define columns
+    worksheet.columns = [
+        {header: 'Filename', key: 'filename', width: 60},
+        {header: 'Codec', key: 'codec', width: 12},
+        {header: 'Profile', key: 'profile', width: 20},
+        {header: 'Bit Depth', key: 'bitDepth', width: 12},
+        {header: 'HDR', key: 'hdr', width: 15},
+        {header: 'Resolution', key: 'resolution', width: 12},
+        {header: 'Audio', key: 'audio', width: 40},
+        {header: 'Duration', key: 'duration', width: 12},
+        {header: 'Bitrate', key: 'bitrate', width: 12},
+        {header: 'FPS', key: 'fps', width: 10},
+        {header: 'File Size', key: 'fileSize', width: 12},
+    ];
+
+    // Style header row
+    worksheet.getRow(1).font = {bold: true};
+    worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: {argb: 'FF4472C4'},
+    };
+    worksheet.getRow(1).font = {bold: true, color: {argb: 'FFFFFFFF'}};
+    worksheet.getRow(1).alignment = {vertical: 'middle', horizontal: 'center'};
+
+    // Add data
+    videoInfos.forEach((info) => {
+        worksheet.addRow(info);
+    });
+
+    // Center align columns B, C, D, E (Codec, Profile, Bit Depth, HDR)
+    ['B', 'C', 'D', 'E', 'F'].forEach((col) => {
+        worksheet.getColumn(col).alignment = {horizontal: 'center'};
+    });
+
+    // Right align columns H, I, J, K (Duration, Bitrate, FPS, File Size)
+    ['H', 'I', 'J', 'K'].forEach((col) => {
+        worksheet.getColumn(col).alignment = {horizontal: 'right'};
+    });
+
+    // Add autofilter
+    worksheet.autoFilter = {
+        from: {row: 1, column: 1},
+        to: {row: 1, column: 11},
+    };
+
+    // Freeze header row
+    worksheet.views = [{state: 'frozen', ySplit: 1}];
+
+    // Save file
+    await workbook.xlsx.writeFile(outputPath);
+    console.log(`Excel file saved: ${outputPath}`);
+}
+
 // ============================================================================
 // Main
 // ============================================================================
 
-function main(): void {
-    const {positionals} = parseArgs({
+function showHelp(): void {
+    console.log(HELP_TEXT);
+}
+
+async function main(): Promise<void> {
+    const {positionals, values} = parseArgs({
         args: process.argv.slice(2),
         allowPositionals: true,
+        options: {
+            output: {
+                type: 'string',
+                short: 'o',
+            },
+            help: {
+                type: 'boolean',
+                short: 'h',
+                default: false,
+            },
+        },
     });
 
+    if (values.help) {
+        showHelp();
+        process.exit(0);
+    }
+
     const inputPath = positionals[0];
+    const outputFile = values.output as string | undefined;
 
     if (!inputPath) {
-        console.error('Usage: tsx video-catalog2.ts <directory_path>');
+        console.error('Error: Missing directory path\n');
+        showHelp();
         process.exit(1);
     }
 
@@ -332,13 +463,32 @@ function main(): void {
         process.exit(1);
     }
 
+    // Validate output file extension if provided
+    if (outputFile) {
+        const ext = path.extname(outputFile).toLowerCase();
+        if (ext !== '.csv' && ext !== '.xlsx') {
+            console.error('Error: Output file must have .csv or .xlsx extension');
+            process.exit(1);
+        }
+    }
+
     const videoFiles = getVideoFiles(inputPath);
     const videoInfos = videoFiles
         .map((file) => getVideoInfo(file, inputPath))
         .filter((info): info is VideoInfo => info !== null)
-        .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+        .sort((a, b) => a.filename.localeCompare(b.filename));
 
-    outputCsv(videoInfos);
+    if (outputFile) {
+        const ext = path.extname(outputFile).toLowerCase();
+        if (ext === '.xlsx') {
+            await outputExcel(videoInfos, outputFile);
+        } else {
+            outputCsvFile(videoInfos, outputFile);
+        }
+    } else {
+        // No output file specified, print CSV to stdout
+        outputCsv(videoInfos);
+    }
 }
 
 main();

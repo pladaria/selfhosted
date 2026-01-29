@@ -69,28 +69,56 @@ crop-dolby-vision-mkv.ts.
 
 ### video-catalog.ts
 
-Scans directories recursively to generate a CSV catalog of video files with detailed metadata.
+Scans directories recursively to generate a catalog of video files with detailed metadata. Supports multiple
+output formats.
 
 **Usage:**
 
 ```bash
+# Output CSV to stdout
+bun video-catalog.ts <directory>
 bun video-catalog.ts <directory> > output.csv
+
+# Save as CSV file
+bun video-catalog.ts <directory> --output catalog.csv
+
+# Save as Excel file
+bun video-catalog.ts <directory> --output catalog.xlsx
 ```
 
 **Features:**
 
 - Detects video codec, profile, and bit depth
-- Identifies HDR formats (HDR10, HDR10+, Dolby Vision, HLG, BT.2020)
-- Extracts audio codec and channel configuration
-- Reports resolution, duration, bitrate, FPS, and file size
-- Outputs CSV format to stdout for easy redirection
+- Identifies HDR formats with enhanced detection:
+    - **HDR10+**: Analyzes frame metadata for dynamic HDR detection
+    - **Dolby Vision**: Stream metadata detection
+    - **HDR10**: PQ transfer with static metadata
+    - **HLG**: Hybrid Log-Gamma
+    - **HDR Vivid**: CUVA dynamic metadata
+    - **BT.2020**: Wide color gamut indicator
+- Extracts audio codec and channel configuration (stereo, 5.1, 7.1)
+- Reports resolution labels (4K, 1080p, 720p, etc.)
+- Displays duration, bitrate (Mbps), FPS, and file size (GB)
+- Multiple output formats:
+    - **CSV**: Stdout or file output
+    - **Excel (.xlsx)**: Formatted spreadsheet with headers, frozen rows, and autofilters
 
-**Output:** CSV with columns: relative_path, codec, profile, bit_depth, hdr, resolution, audio, duration,
-bitrate, fps, file_size.
+**Output Formats:**
+
+- **CSV**: relative_path, codec, profile, bit_depth, hdr, resolution, audio, duration, bitrate, fps, file_size
+- **Excel**: Same data with professional formatting, frozen header, and autofilters for easy sorting
 
 **Requirements:**
 
 - ffprobe
+- bun (with exceljs package for Excel output)
+
+**Installation:**
+
+```bash
+cd video-tools
+bun install
+```
 
 ## Installation
 
