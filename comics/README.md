@@ -76,6 +76,45 @@ Creates a new CBZ file with the suffix ` [webp]`.
 ./repack-cbz.sh -d /path/to/comics_folder
 ```
 
+---
+
+## 3. `infer-comic-metadata.ts`
+
+**Description:** Uses OpenAI `gpt-5.4` to identify a comic, manga, or graphic novel from a noisy filename and prints normalized metadata as JSON.
+
+**Requirements:**
+
+-   `bun`
+-   `OPENAI_API_KEY` in `.env` or shell environment
+
+**Setup:**
+
+```sh
+bun install
+```
+
+**Usage:**
+
+```sh
+bun run infer-comic-metadata.ts "Ore Monogatari!! [SomeGroup] www.example.com.cbz"
+```
+
+**Output JSON fields:**
+
+-   `type`
+-   `original_title`
+-   `alternative_titles`
+-   `release_date`
+-   `end_date`
+-   `authors`
+-   `genres`
+-   `tags`
+-   `synopsis`
+-   `demographic`
+-   `volume_count`
+-   `completed`
+-   `additional_information`
+
 ## Disclaimer
 
 These scripts were mostly vibe coded. Use at your own risk and feel free to improve them!
