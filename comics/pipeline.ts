@@ -6,7 +6,7 @@ import * as openlibrary from './sources/openlibrary.ts';
 import * as tebeosfera from './sources/tebeosfera.ts';
 import {basename} from 'path';
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const OLLAMA_BASE_URL = 'http://localhost:11434';
 const IA_MODEL = process.env.IA_MODEL || 'gemma3:27b';
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || '1h';
 
@@ -65,60 +65,15 @@ function summarizeSourceData(sources: SourceData): string {
     const parts: string[] = [];
 
     if (sources.manganime) {
-        const s = sources.manganime;
-        parts.push(
-            JSON.stringify({
-                source: 'MangaUpdates',
-                title: s.title,
-                type: s.type,
-                description: s.description,
-                authors: s.authors.map((a) => a.label),
-                artists: s.artists.map((a) => a.label),
-                genres: s.genres,
-                categories: s.categories,
-                year: s.year,
-                publishers: s.originalPublishers.map((p) => p.label),
-                rating: s.rating,
-                associatedNames: s.associatedNames,
-                statusInCountryOfOrigin: s.statusInCountryOfOrigin,
-            })
-        );
+        parts.push(`## MangaUpdates\n\`\`\`json\n${JSON.stringify(sources.manganime, null, 2)}\n\`\`\``);
     }
 
     if (sources.openlibrary) {
-        const s = sources.openlibrary;
-        parts.push(
-            JSON.stringify({
-                source: 'OpenLibrary',
-                title: s.title,
-                subtitle: s.subtitle,
-                description: s.description,
-                authors: s.authors?.map((a: any) => a.name),
-                subjects: s.subjects,
-                publishers: s.publishers,
-                firstPublishDate: s.firstPublishDate,
-                languages: s.languages,
-                isbn10: s.isbn10,
-                isbn13: s.isbn13,
-            })
-        );
+        parts.push(`## OpenLibrary\n\`\`\`json\n${JSON.stringify(sources.openlibrary, null, 2)}\n\`\`\``);
     }
 
     if (sources.tebeosfera) {
-        const s = sources.tebeosfera;
-        parts.push(
-            JSON.stringify({
-                source: 'Tebeosfera',
-                title: s.title,
-                subtitle: s.subtitle,
-                publishers: s.publishers.map((p) => p.label),
-                genres: s.genres,
-                dates: s.dates,
-                format: s.format,
-                pagination: s.pagination,
-                issueCount: s.issues?.length ?? null,
-            })
-        );
+        parts.push(`## Tebeosfera\n\`\`\`json\n${JSON.stringify(sources.tebeosfera, null, 2)}\n\`\`\``);
     }
 
     return parts.join('\n\n');
@@ -139,9 +94,11 @@ type SourceCandidate = {
 
 async function validateSource(candidate: SourceCandidate, reference: SourceReference): Promise<boolean> {
     const prompt = [
-        'You are a strict matching validator. Determine if two entries refer to the SAME comic/manga/graphic work.',
+        'You are a matching validator. Determine if two entries refer to the SAME comic/manga/graphic work.',
         'Consider title similarity, author overlap, and publisher. Minor spelling differences are acceptable.',
         'Different works by the same author are NOT a match. Different editions or translations of the same work ARE a match.',
+        'If the candidate has no authors listed (empty array), do NOT reject it for missing authors — focus on title similarity instead.',
+        'A strong title match alone is sufficient when author data is unavailable in the candidate.',
         'Return ONLY a JSON object with two fields:',
         '- match: true or false',
         '- reason: brief explanation',
@@ -231,7 +188,7 @@ async function filterSources(sources: SourceData, reference: SourceReference): P
     const filtered: SourceData = {manganime: null, openlibrary: null, tebeosfera: null};
     candidates.forEach((c, i) => {
         if (validations[i]) {
-            (filtered as any)[c.key] = c.data;
+            (filtered as any)[c.key] = c.candidate.data;
         }
     });
 
@@ -359,6 +316,15 @@ export async function getComicMetadata(archivePath: string): Promise<Record<stri
         tebeosfera: tebeosferaResult,
     };
     const sources = await filterSources(rawSources, reference);
+
+    const accepted = Object.entries(sources)
+        .filter(([, v]) => v !== null)
+        .map(([k]) => k);
+    if (accepted.length > 0) {
+        console.error(`[validate] Accepted sources: ${accepted.join(', ')}`);
+    } else {
+        console.error('[validate] No external sources matched');
+    }
 
     // Step 4: Aggregate everything with AI
     console.error('[4/4] Aggregating metadata with AI...');

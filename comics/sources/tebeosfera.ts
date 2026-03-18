@@ -2,6 +2,9 @@ import * as cheerio from "cheerio";
 
 const BASE_URL = "https://www.tebeosfera.com";
 const SEARCH_ENDPOINT = `${BASE_URL}/neko/templates/ajax/buscador_txt_post.php`;
+const OLLAMA_BASE_URL = "http://localhost:11434";
+const IA_MODEL = process.env.IA_MODEL || "gemma3:27b";
+const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "1h";
 
 export type TebeosferaLinkedItem = {
   label: string;
@@ -28,6 +31,25 @@ export type TebeosferaSearchResponse = {
 
 export type TebeosferaSearchOptions = {
   author?: string;
+};
+
+type TebeosferaAuthorCandidate = {
+  url: string;
+  title: string;
+  summaryTitle: string | null;
+  publicationDate: string | null;
+  summary: string | null;
+  authors: string[];
+};
+
+type TebeosferaAuthorRanking = {
+  ranked_urls: string[];
+  selected_url: string | null;
+  matches?: Array<{
+    url: string;
+    matched_author: string | null;
+    reason?: string | null;
+  }>;
 };
 
 export type TebeosferaCollectionIssue = {
@@ -275,33 +297,81 @@ async function getIssueAuthors(issueUrl: string) {
   );
 }
 
-function scoreAuthorMatch(authorQuery: string, values: string[]) {
-  const queryNorm = normalizeForMatch(authorQuery);
-  const searchable = values.map(normalizeForMatch).filter(Boolean);
-  if (searchable.length === 0) {
-    return 0;
+async function rankCandidatesWithAuthorHint(
+  query: string,
+  authorQuery: string,
+  candidates: TebeosferaAuthorCandidate[]
+) {
+  if (candidates.length === 0) {
+    return null;
   }
 
-  if (searchable.some((value) => value === queryNorm)) {
-    return 220;
-  }
+  const prompt = [
+    "You rank Tebeosfera search candidates for the SAME comic/manga/graphic collection the user is looking for.",
+    "Prioritize title similarity first, then use the author hint to break ties or reject wrong works.",
+    "Different works by the same author are NOT a match.",
+    "Different editions, translations, or reprints of the same work CAN be a match.",
+    "If a candidate has no authors, do not reject it only for missing authors when the title is very strong.",
+    "Return ONLY valid JSON with this shape:",
+    '{ "ranked_urls": ["..."], "selected_url": "..." | null, "matches": [{"url":"...","matched_author":"..." | null,"reason":"brief"}] }'
+  ].join("\n");
 
-  const queryTokens = tokens(authorQuery);
-  const exactTokenMatch = searchable.some((value) => {
-    const valueTokens = new Set(tokens(value));
-    return queryTokens.every((token) => valueTokens.has(token));
+  const userMessage = [
+    `Target title: ${query}`,
+    `Author hint: ${authorQuery}`,
+    "",
+    "Candidates:",
+    JSON.stringify(candidates, null, 2)
+  ].join("\n");
+
+  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: IA_MODEL,
+      stream: false,
+      keep_alive: OLLAMA_KEEP_ALIVE,
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user", content: userMessage }
+      ],
+      format: "json"
+    })
   });
-  if (exactTokenMatch) {
-    return 180;
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Ollama API error (${response.status}): ${errorText}`);
   }
 
-  if (searchable.some((value) => value.includes(queryNorm))) {
-    return 100;
+  const data = (await response.json()) as { message?: { content?: string } };
+  const content = data.message?.content;
+  if (!content) {
+    throw new Error("Ollama returned no content");
   }
 
-  const haystackTokens = new Set(searchable.flatMap((value) => tokens(value)));
-  const matched = queryTokens.filter((token) => haystackTokens.has(token)).length;
-  return matched * 20;
+  return JSON.parse(content) as TebeosferaAuthorRanking;
+}
+
+function applyAiRanking(
+  topCandidates: TebeosferaSearchResult[],
+  ranking: TebeosferaAuthorRanking
+) {
+  const allowedUrls = new Set(topCandidates.map((result) => result.url));
+  const rankedUrls = unique((ranking.ranked_urls ?? []).filter((url) => allowedUrls.has(url)));
+
+  if (rankedUrls.length === 0) {
+    if (ranking.selected_url && allowedUrls.has(ranking.selected_url)) {
+      return [ranking.selected_url, ...topCandidates.map((result) => result.url).filter((url) => url !== ranking.selected_url)];
+    }
+
+    throw new Error("Ollama returned an invalid ranking for Tebeosfera candidates");
+  }
+
+  const missingUrls = topCandidates.map((result) => result.url).filter((url) => !rankedUrls.includes(url));
+  return [...rankedUrls, ...missingUrls];
 }
 
 function scoreTitleMatch(query: string, result: TebeosferaSearchResult) {
@@ -368,37 +438,61 @@ export async function searchWithAuthor(query: string, options: TebeosferaSearchO
   const topCandidates = titleRankedResults.slice(0, 12);
   const candidateDetails = await Promise.all(
     topCandidates.map(async (result) => {
-      let matchedAuthor: string | null = null;
-      let authorBoost = 0;
+      let authors: string[] = [];
 
       try {
         const collection = await getCollection(result.url);
         const primaryIssue = collection.issues.find((issue) => issue.kind === "ordinary") ?? collection.issues[0];
 
         if (primaryIssue) {
-          const authorValues = await getIssueAuthors(primaryIssue.url);
-          const score = scoreAuthorMatch(authorQuery, authorValues);
-          if (score > 0) {
-            authorBoost = 1000 + score;
-            matchedAuthor = authorValues.find((value) => normalizeForMatch(value).includes(normalizeForMatch(authorQuery))) ?? authorValues[0] ?? null;
-          }
+          authors = await getIssueAuthors(primaryIssue.url);
         }
       } catch {
-        // Ignore per-result author enrichment failures and keep title-only ranking.
+        // Ignore per-result enrichment failures and keep title-only ranking.
       }
 
       return {
-        ...result,
-        score: (result.score ?? 0) + authorBoost,
-        matchedAuthor
+        url: result.url,
+        title: result.title,
+        summaryTitle: result.summaryTitle,
+        publicationDate: result.publicationDate,
+        summary: result.summary,
+        authors
       };
     })
   );
 
-  const enrichedByUrl = new Map(candidateDetails.map((result) => [result.url, result]));
-  const scoredResults = titleRankedResults
-    .map((result) => enrichedByUrl.get(result.url) ?? result)
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  const ranking = await rankCandidatesWithAuthorHint(query, authorQuery, candidateDetails);
+  const rankedTopUrls = applyAiRanking(topCandidates, ranking);
+  const allowedUrls = new Set(topCandidates.map((result) => result.url));
+  const matchedAuthorByUrl = new Map(
+    (ranking.matches ?? [])
+      .filter((match) => allowedUrls.has(match.url))
+      .map((match) => [match.url, match.matched_author ?? null])
+  );
+
+  const rankedTopUrlSet = new Set(rankedTopUrls);
+  const scoredResults = [
+    ...rankedTopUrls
+      .map((url) => {
+        const result = topCandidates.find((candidate) => candidate.url === url);
+        if (!result) {
+          return null;
+        }
+
+        return {
+          ...result,
+          matchedAuthor: matchedAuthorByUrl.get(url) ?? null
+        };
+      })
+      .filter((result): result is TebeosferaSearchResult => Boolean(result)),
+    ...titleRankedResults
+      .filter((result) => !rankedTopUrlSet.has(result.url))
+      .map((result) => ({
+        ...result,
+        matchedAuthor: result.matchedAuthor ?? null
+      }))
+  ];
 
   return {
     ...base,

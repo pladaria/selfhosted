@@ -1,6 +1,6 @@
 import type {ComicCoverOcrResult} from '../ocr/index.ts';
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const OLLAMA_BASE_URL = 'http://localhost:11434';
 const IA_MODEL = process.env.IA_MODEL || 'gemma3:27b';
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || '1h';
 

@@ -44,7 +44,6 @@ OCR module that analyzes comic book cover images using a local Ollama instance w
 
 **Configuration (env vars):**
 
-- `OLLAMA_BASE_URL` — Ollama API URL (default: `http://localhost:11434`)
 - `OCR_MODEL` — Model name (default: `deepseek-ocr`)
 
 ### `sources/`
