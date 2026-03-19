@@ -18,6 +18,7 @@
     "genre",
     "tags",
     "pageCount",
+    "rating",
     "publishingTradition",
     "demography"
   ],
@@ -206,6 +207,19 @@
       "anyOf": [
         {
           "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rating": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Rating value between 0 and 10."
         },
         {
           "type": "null"

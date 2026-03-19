@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { debug } from "../utils/log.ts";
 
 type OpenAiUsage = {
   input_tokens?: number;
@@ -8,19 +9,6 @@ type OpenAiUsage = {
     cached_tokens?: number;
   };
 };
-
-function logStderr(message: string, data?: unknown) {
-  const ANSI_GRAY = "\x1b[90m";
-  const ANSI_RESET = "\x1b[0m";
-
-  if (data === undefined) {
-    process.stderr.write(`${ANSI_GRAY}${message}${ANSI_RESET}\n`);
-    return;
-  }
-
-  const payload = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-  process.stderr.write(`${ANSI_GRAY}${message}: ${payload}${ANSI_RESET}\n`);
-}
 
 function getModelPricing(model: string) {
   const normalized = model.toLowerCase();
@@ -85,9 +73,9 @@ export function logOpenAiCost(
 ) {
   const estimate = estimateOpenAiCost(model, response.usage as OpenAiUsage | undefined);
   if (!estimate) {
-    logStderr(`${label} coste openai`, "estimacion no disponible para este modelo");
+    debug(`${label} coste openai`, "estimacion no disponible para este modelo");
     return;
   }
 
-  logStderr(`${label} coste openai`, estimate);
+  debug(`${label} coste openai`, estimate);
 }

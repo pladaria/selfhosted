@@ -1,7 +1,7 @@
 import type { ComicCoverOcrResult } from "../ocr/index.ts";
 
 const OLLAMA_BASE_URL = "http://localhost:11434";
-const IA_MODEL = process.env.IA_MODEL || "gemma3:27b";
+const OLLAMA_TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || "gemma3:27b";
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "1h";
 
 export type ComicFileInfo = {
@@ -82,7 +82,7 @@ export async function getInfoFromFilename(filename: string, context?: Context): 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: IA_MODEL,
+      model: OLLAMA_TEXT_MODEL,
       stream: false,
       keep_alive: OLLAMA_KEEP_ALIVE,
       messages: [

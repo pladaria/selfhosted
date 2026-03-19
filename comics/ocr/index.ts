@@ -1,10 +1,9 @@
 import {readFileSync} from 'fs';
+import {debug} from '../utils/log.ts';
 
 const OLLAMA_BASE_URL = 'http://localhost:11434';
-const OCR_MODEL = process.env.OCR_MODEL || 'gemma3:27b';
+const OLLAMA_OCR_MODEL = process.env.OLLAMA_OCR_MODEL || 'gemma3:27b';
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || '1h';
-const ANSI_GRAY = '\x1b[90m';
-const ANSI_RESET = '\x1b[0m';
 
 export type ComicCoverOcrResult = Partial<{
     title: string;
@@ -24,16 +23,6 @@ export type ComicCoverOcrResult = Partial<{
 function imageToBase64(imagePath: string): string {
     const buffer = readFileSync(imagePath);
     return buffer.toString('base64');
-}
-
-function logStderr(message: string, data?: unknown) {
-    if (data === undefined) {
-        process.stderr.write(`${ANSI_GRAY}${message}${ANSI_RESET}\n`);
-        return;
-    }
-
-    const payload = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-    process.stderr.write(`${ANSI_GRAY}${message}: ${payload}${ANSI_RESET}\n`);
 }
 
 function normalizeString(value: unknown): string | undefined {
@@ -137,11 +126,11 @@ const systemPrompt = [
 ].join('\n');
 
 export async function ocrComicCover(imagePath: string): Promise<ComicCoverOcrResult> {
-    logStderr('leyendo imagen', imagePath);
+    debug('leyendo imagen', imagePath);
     const base64Image = imageToBase64(imagePath);
-    logStderr('ejecutando ollama', {
+    debug('ejecutando ollama', {
         url: `${OLLAMA_BASE_URL}/api/chat`,
-        model: OCR_MODEL,
+        model: OLLAMA_OCR_MODEL,
         keep_alive: OLLAMA_KEEP_ALIVE,
         imagePath,
     });
@@ -150,7 +139,7 @@ export async function ocrComicCover(imagePath: string): Promise<ComicCoverOcrRes
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            model: OCR_MODEL,
+            model: OLLAMA_OCR_MODEL,
             stream: false,
             keep_alive: OLLAMA_KEEP_ALIVE,
             messages: [

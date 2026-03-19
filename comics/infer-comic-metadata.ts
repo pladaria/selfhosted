@@ -3,6 +3,7 @@ import OpenAI from "openai";
 type JsonSchema = Record<string, unknown>;
 
 const MODEL = "gpt-5.4";
+const OPENAI_REASONING_EFFORT = (process.env.OPENAI_REASONING_EFFORT || "low") as "low" | "medium" | "high";
 
 const systemPrompt = [
   "You are a comics, manga, and graphic literature metadata specialist.",
@@ -177,7 +178,7 @@ async function main() {
 
   const response = await client.responses.create({
     model: MODEL,
-    reasoning: { effort: "medium" },
+    reasoning: { effort: OPENAI_REASONING_EFFORT },
     tools: [{ type: "web_search" }],
     text: {
       format: {

@@ -7,13 +7,13 @@ import {ocrComicCover, type ComicCoverOcrResult} from './ocr/index.ts';
 import * as filename from './sources/filename.ts';
 import * as mangaupdates from './sources/mangaupdates.ts';
 import * as tebeosfera from './sources/tebeosfera.ts';
+import {debug} from './utils/log.ts';
 
 const OLLAMA_BASE_URL = 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.IA_MODEL || 'gemma3:27b';
+const OLLAMA_MODEL = process.env.OLLAMA_TEXT_MODEL || 'gemma3:27b';
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || '1h';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.4-mini';
-const ANSI_GRAY = '\x1b[90m';
-const ANSI_RESET = '\x1b[0m';
+const OPENAI_REASONING_EFFORT = (process.env.OPENAI_REASONING_EFFORT || 'low') as 'low' | 'medium' | 'high';
 
 type JsonSchema = Record<string, unknown>;
 
@@ -64,16 +64,6 @@ const BANNED_GENERIC_TAG_HINTS = [
     'web comic',
     'webtoon',
 ];
-
-function logStderr(message: string, data?: unknown) {
-    if (data === undefined) {
-        process.stderr.write(`${ANSI_GRAY}${message}${ANSI_RESET}\n`);
-        return;
-    }
-
-    const payload = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-    process.stderr.write(`${ANSI_GRAY}${message}: ${payload}${ANSI_RESET}\n`);
-}
 
 function normalizeWhitespace(value: string) {
     return value
@@ -411,10 +401,10 @@ async function runMangaUpdatesScraper(
 ): Promise<SourceRunResult> {
     for (const searchTitle of searchTitles) {
         try {
-            logStderr('[mangaupdates] buscando', {searchTitle});
+            debug('[mangaupdates] buscando', {searchTitle});
             const searchResult = await mangaupdates.search(searchTitle);
             if (searchResult.results.length === 0) {
-                logStderr('[mangaupdates] sin resultados', {searchTitle});
+                debug('[mangaupdates] sin resultados', {searchTitle});
                 continue;
             }
 
@@ -426,7 +416,7 @@ async function runMangaUpdatesScraper(
             const selectedUrl = selection?.selected_url;
             const selected =
                 searchResult.results.find((result) => result.url === selectedUrl) ?? searchResult.results[0];
-            logStderr('[mangaupdates] candidato elegido', {
+            debug('[mangaupdates] candidato elegido', {
                 searchTitle,
                 title: selected.title,
                 url: selected.url,
@@ -436,9 +426,9 @@ async function runMangaUpdatesScraper(
             const details = toRecord(await mangaupdates.getSeries(selected.url));
             const validation = await validateSource('mangaupdates', buildReference(context), details);
 
-            logStderr('[mangaupdates] validacion', validation);
+            debug('[mangaupdates] validacion', validation);
             if (!validation.match) {
-                logStderr('[mangaupdates] descartando candidato y probando siguiente titulo', {searchTitle});
+                debug('[mangaupdates] descartando candidato y probando siguiente titulo', {searchTitle});
                 continue;
             }
 
@@ -449,7 +439,7 @@ async function runMangaUpdatesScraper(
                 accepted: true,
             };
         } catch (error) {
-            logStderr('[mangaupdates] error', {
+            debug('[mangaupdates] error', {
                 searchTitle,
                 error: error instanceof Error ? error.message : String(error),
             });
@@ -469,12 +459,12 @@ async function runFilenameSource(
     context?: ComicCoverOcrResult
 ): Promise<SourceRunResult> {
     try {
-        logStderr('[filename] analizando', {archivePath});
+        debug('[filename] analizando', {archivePath});
         const data = toRecord(await filename.extractFilenameMeta(archivePath, context));
-        logStderr('[filename] resultado', data);
+        debug('[filename] resultado', data);
         const validation = context ? await validateSource('filename', buildReference(context), data) : null;
         if (validation) {
-            logStderr('[filename] validacion', validation);
+            debug('[filename] validacion', validation);
         }
 
         return {
@@ -484,7 +474,7 @@ async function runFilenameSource(
             accepted: true,
         };
     } catch (error) {
-        logStderr('[filename] error', error instanceof Error ? error.message : String(error));
+        debug('[filename] error', error instanceof Error ? error.message : String(error));
         return {
             source: 'filename',
             data: null,
@@ -500,17 +490,17 @@ async function runTebeosferaScraper(
 ): Promise<SourceRunResult> {
     for (const searchTitle of searchTitles) {
         try {
-            logStderr('[tebeosfera] buscando', {searchTitle});
+            debug('[tebeosfera] buscando', {searchTitle});
             const data = toRecord(
                 await tebeosfera.scrapeComicMetaFromOcrContext(context, {
                     searchTitle,
                 })
             );
             const validation = await validateSource('tebeosfera', buildReference(context), data);
-            logStderr('[tebeosfera] validacion', validation);
+            debug('[tebeosfera] validacion', validation);
 
             if (!validation.match) {
-                logStderr('[tebeosfera] descartando candidato y probando siguiente titulo', {searchTitle});
+                debug('[tebeosfera] descartando candidato y probando siguiente titulo', {searchTitle});
                 continue;
             }
 
@@ -521,7 +511,7 @@ async function runTebeosferaScraper(
                 accepted: true,
             };
         } catch (error) {
-            logStderr('[tebeosfera] error', {
+            debug('[tebeosfera] error', {
                 searchTitle,
                 error: error instanceof Error ? error.message : String(error),
             });
@@ -557,7 +547,7 @@ function buildSourcesMarkdown(ocrResult: ComicCoverOcrResult, results: SourceRun
 async function aggregateComicMeta(client: OpenAI, markdown: string, schema: JsonSchema) {
     const response = await client.responses.create({
         model: OPENAI_MODEL,
-        reasoning: {effort: 'medium'},
+        reasoning: {effort: OPENAI_REASONING_EFFORT},
         text: {
             format: {
                 type: 'json_schema',
@@ -588,22 +578,20 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
             'Use other sources to enrich, normalize, or transliterate the chosen title, but do not replace a correct validated filename title unnecessarily.',
             'Use OCR as fallback when scraper data is absent.',
             'Keep summary focused on the synopsis or premise of the work itself.',
-            'If source summary text mixes synopsis with editorial copy, edition details, author commentary, biographical remarks, publication history, trivia, curiosities, or format information, extract only the real plot or premise into summary and move the rest into notes.',
+            'Set rating only when the provided sources include a rating signal that can be mapped to a 0 to 10 numeric value; otherwise use null.',
+            'If source summary text mixes synopsis with editorial copy, edition-specific quirks, author commentary, biographical remarks, trivia, curiosities, or format information, extract only the real plot or premise into summary and move the rest into notes only if it is genuinely useful and not already covered by another field.',
             "Do not keep labels like 'Información de la editorial' in summary unless they are part of the actual synopsis.",
-            'Notes should absorb non-synopsis material such as edition details, printing history, publication context, curiosities, author remarks, bonus contents, format details, and other supplementary information.',
-            'Do not use notes as a dump for facts that already belong to structured fields.',
-            'Do not repeat in notes information already captured in title, alternateTitles, artists, publisher, releaseDate, volume, volumeCount, genre, tags, publishingTradition, demography, or other explicit fields.',
-            'If a fact is already represented elsewhere in the JSON, omit it from notes unless the note adds genuinely new context, nuance, ambiguity, or editorial detail.',
-            'Notes should add value, not restate the structured metadata.',
-            'In particular, do not use notes to restate publisher, year, demography, publishingTradition, genre, tags, creator list, alternate titles, related works, or basic release format.',
-            "Bad notes example: 'Publisher: East Press. Publishing tradition: manga. Demography: josei. Genre/mood: psychological drama.'",
-            "Bad notes example: 'Related works referenced in source materials: Hitori Koukan Nikki; Meisou Senshi Nagata Kabi.'",
-            "Bad notes example: 'Original publisher: East Press; 2019 release. English edition title: My Alcoholic Escape from Reality.'",
-            'Do not repeat in notes original publisher, release year/date, or translated/English edition titles when those facts are already captured in publisher, releaseDate, or alternateTitles.',
-            'Good notes should capture only meaningful extra context such as edition-specific quirks, publication history, bonus contents, adaptation context, author commentary, controversies, or source ambiguities that do not fit better elsewhere.',
+            'Use notes only for meaningful extra context that does not fit better in another field, such as edition-specific quirks, bonus contents, adaptation context, author commentary, controversies, or source ambiguities.',
+            'Prefer notes to be empty rather than filled with duplicated, obvious, or redundant metadata.',
+            'Do not put into notes facts already represented in structured fields such as title, alternateTitles, artists, publisher, releaseDate, volume, volumeCount, genre, tags, publishingTradition, demography, or related works.',
+            'Do not use notes for publication facts already represented elsewhere, including original publisher, publisher country, release year/date, edition title, creator identity, genre-like descriptors, or lists of related works.',
+            "Bad notes examples: 'Publisher: East Press. Publishing tradition: manga. Demography: josei.' and 'Original publisher: East Press; 2019 release. English edition title: My Alcoholic Escape from Reality.'",
             'Deduplicate alternate titles, genres, tags, and artists intelligently.',
             'Never output duplicate artists entries with the same person and the same role.',
             'If the same creator appears more than once with the same role, merge them into a single artists entry and combine any alias information into aka.',
+            'Avoid redundant multi-role duplication for the same creator when the roles do not add useful information.',
+            'For manga, manhwa, and manhua, if the same single creator is effectively the main creator, prefer one artists entry with role author instead of repeating that same person as penciller, inker, or similar production roles.',
+            'Only keep multiple roles for the same person when the distinction is explicit, important, and genuinely informative for this work.',
             'Normalize creator name casing so names are not left in random shouty uppercase fragments.',
             "For example, prefer 'Nagata Kabi' over 'NAGATA Kabi' unless the uppercase form is a true acronym or intentional stylization.",
             'Keep genuine acronyms or initials uppercase, but otherwise use normal human name capitalization.',
@@ -622,6 +610,7 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
             'When an author name string contains aliases or alternative names, split them intelligently.',
             "For example, if a source contains something like 'Pepito (Jose Luis Perales)', infer the primary display name and put the alternate form in aka.",
             'Use aka for pen names, aliases, full-name expansions, alternate spellings, transliterations, romanizations, or name forms found in parentheses.',
+            'Do not use aka for mere casing variants such as NAGATA Kabi versus Nagata Kabi.',
             'Do not leave alias information embedded inside the main name field when it can be separated cleanly into aka.',
             'Do not invent facts.',
             'Return only the JSON object.',
@@ -647,13 +636,13 @@ export async function getComicMeta(archivePath: string) {
         const filenamePromise = runFilenameSource(archivePath);
         const schemaPromise = Bun.file('./schema/comicmeta.json').text();
 
-        logStderr('extrayendo portada', archivePath);
+        debug('extrayendo portada', archivePath);
         coverPath = await getCoverFile(archivePath);
-        logStderr('portada extraida', coverPath);
+        debug('portada extraida', coverPath);
 
-        logStderr('ejecutando ocr');
+        debug('ejecutando ocr');
         const ocrResult = await ocrComicCover(coverPath);
-        logStderr('ocr completado', ocrResult);
+        debug('ocr completado', ocrResult);
 
         const filenameResult = await filenamePromise;
         const searchTitles = buildSearchTitles(archivePath, ocrResult, filenameResult.data);
@@ -661,7 +650,7 @@ export async function getComicMeta(archivePath: string) {
             throw new Error('Could not infer a search title from OCR or filename');
         }
 
-        logStderr('titulos de busqueda', searchTitles);
+        debug('titulos de busqueda', searchTitles);
 
         const [mangaupdatesResult, tebeosferaResult, schemaText] = await Promise.all([
             runMangaUpdatesScraper(ocrResult, searchTitles),
@@ -671,12 +660,12 @@ export async function getComicMeta(archivePath: string) {
 
         const sourceResults = [filenameResult, mangaupdatesResult, tebeosferaResult];
         const markdown = buildSourcesMarkdown(ocrResult, sourceResults);
-        logStderr('markdown intermedio', markdown);
+        debug('markdown intermedio', markdown);
 
         const finalResult = postProcessComicMeta(
             await aggregateComicMeta(client, markdown, JSON.parse(schemaText) as JsonSchema)
         );
-        logStderr(
+        debug(
             'fuentes aceptadas',
             sourceResults.filter((result) => result.accepted).map((result) => result.source)
         );
@@ -684,7 +673,7 @@ export async function getComicMeta(archivePath: string) {
         return finalResult;
     } finally {
         if (coverPath) {
-            logStderr('eliminando portada temporal', coverPath);
+            debug('eliminando portada temporal', coverPath);
             await unlink(coverPath).catch(() => {});
         }
     }

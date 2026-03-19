@@ -1,19 +1,7 @@
 import { unlink } from "node:fs/promises";
 import { getCoverFile } from "./archive/index.ts";
 import { ocrComicCover } from "./ocr/index.ts";
-
-const ANSI_GRAY = "\x1b[90m";
-const ANSI_RESET = "\x1b[0m";
-
-function logStderr(message: string, data?: unknown) {
-  if (data === undefined) {
-    process.stderr.write(`${ANSI_GRAY}${message}${ANSI_RESET}\n`);
-    return;
-  }
-
-  const payload = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-  process.stderr.write(`${ANSI_GRAY}${message}: ${payload}${ANSI_RESET}\n`);
-}
+import { debug } from "./utils/log.ts";
 
 async function main() {
   const archivePath = process.argv[2];
@@ -22,15 +10,15 @@ async function main() {
     process.exit(1);
   }
 
-  logStderr("extrayendo imagen", archivePath);
+  debug("extrayendo imagen", archivePath);
   const coverPath = await getCoverFile(archivePath);
-  logStderr("nombre de la imagen", coverPath);
+  debug("nombre de la imagen", coverPath);
 
   try {
     const result = await ocrComicCover(coverPath);
     console.log(JSON.stringify(result, null, 2));
   } finally {
-    logStderr("eliminando imagen temporal", coverPath);
+    debug("eliminando imagen temporal", coverPath);
     await unlink(coverPath).catch(() => {});
   }
 }

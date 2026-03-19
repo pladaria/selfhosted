@@ -44,7 +44,8 @@ OCR module that analyzes comic book cover images using a local Ollama instance.
 
 **Configuration (env vars):**
 
-- `OCR_MODEL` — Model name (default: `gemma3:27b`)
+- `OLLAMA_OCR_MODEL` — OCR model name (default: `gemma3:27b`)
+- `OLLAMA_TEXT_MODEL` — Text/inference model name (default: `gemma3:27b`)
 
 ### `sources/`
 

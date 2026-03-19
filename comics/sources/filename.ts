@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { ComicCoverOcrResult } from "../ocr/index.ts";
 
 const OLLAMA_BASE_URL = "http://localhost:11434";
-const IA_MODEL = process.env.IA_MODEL || "gemma3:27b";
+const OLLAMA_TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || "gemma3:27b";
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "1h";
 
 export type FilenameSourceResult = {
@@ -130,10 +130,12 @@ function normalizeFilenameInput(input: string) {
 const systemPrompt = [
   "You are a comic filename metadata extraction specialist.",
   "You will receive a comic archive filename and optional OCR context from the cover.",
-  "Extract as much metadata as can be reasonably inferred from the filename itself.",
-  "Prefer facts explicitly present in the filename.",
-  "Use OCR context only as a tie-breaker or to disambiguate names and titles.",
-  "Do not invent metadata that is not supported by the filename or the provided context.",
+  "Extract only metadata that is explicitly present in the filename itself.",
+  "Do not infer plausible metadata from world knowledge, prior knowledge, or model memory.",
+  "If a field is not literally supported by text or tokens present in the filename, leave it null or empty.",
+  "Use OCR context only as a tie-breaker to disambiguate text already present in the filename.",
+  "OCR context must not introduce new metadata fields that are absent from the filename.",
+  "Do not complete missing publisher, collection, publishingTradition, release_type, authors, artists, or other fields from memory or from OCR context unless they are explicitly present in the filename text.",
   "Return only valid JSON.",
   "Use null for unknown strings and empty arrays for unknown lists.",
   "Fields to extract:",
@@ -149,13 +151,13 @@ const systemPrompt = [
   "- translation_group: translator or scanlation group responsible for translation",
   "- release_group: release packager, uploader, or release group when distinct",
   "- publisher: publisher or editorial label",
-  "- collection: collection, imprint, or line",
+  "- collection: collection, imprint, or line only if explicitly written in the filename",
   "- language: release language if present",
   "- source_url: website or source URL if present",
   "- format: release or file format hints such as digital, webrip, omnibus, deluxe, etc.",
-  "- publishingTradition: manga, manhwa, manhua, franco-belgian, american-comic, spanish-comic, graphic-novel, european-comic, or another precise publication type when supported",
-  "- release_type: classify the publication or package if visible, such as oneshot, anthology, tankobon, chapter-release, issue-release, artbook, magazine, novelization, omnibus",
-  "- notes: short clarifying notes about ambiguous extracted metadata",
+  "- publishingTradition: only if the filename explicitly says it or includes an explicit equivalent label",
+  "- release_type: only if explicitly visible in the filename, such as oneshot, anthology, tankobon, chapter-release, issue-release, artbook, magazine, novelization, omnibus",
+  "- notes: short clarifying notes only about ambiguity in text that is actually present in the filename",
   "- other: other relevant tokens from the filename that do not fit the previous fields"
 ].join("\n");
 
@@ -172,7 +174,7 @@ export async function extractFilenameMeta(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: IA_MODEL,
+      model: OLLAMA_TEXT_MODEL,
       stream: false,
       keep_alive: OLLAMA_KEEP_ALIVE,
       messages: [

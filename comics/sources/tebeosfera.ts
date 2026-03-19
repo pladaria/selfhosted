@@ -1,10 +1,11 @@
 import * as cheerio from "cheerio";
 import { readFile } from "node:fs/promises";
+import { debug } from "../utils/log.ts";
 
 const BASE_URL = "https://www.tebeosfera.com";
 const SEARCH_ENDPOINT = `${BASE_URL}/neko/templates/ajax/buscador_txt_post.php`;
 const OLLAMA_BASE_URL = "http://localhost:11434";
-const IA_MODEL = process.env.IA_MODEL || "gemma3:27b";
+const OLLAMA_TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || "gemma3:27b";
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "1h";
 const REAL_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
@@ -115,6 +116,20 @@ function uniqueStrings(values: string[]) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function formatSearchCandidate(candidate: SearchCandidate) {
+  const details = [
+    candidate.year ? String(candidate.year) : null,
+    candidate.publisher,
+    candidate.releaseDateText,
+    candidate.format
+  ].filter(Boolean);
+
+  const subtitle = candidate.subtitle ? ` - ${candidate.subtitle}` : "";
+  return details.length > 0
+    ? `${candidate.title}${subtitle} (${details.join(", ")})`
+    : `${candidate.title}${subtitle}`;
+}
+
 function cleanObject<T>(value: T): T {
   if (Array.isArray(value)) {
     return value
@@ -167,11 +182,6 @@ function cleanObject<T>(value: T): T {
   }
 
   return value;
-}
-
-function logStderr(label: string, value: unknown) {
-  const payload = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  process.stderr.write(`${label}: ${payload}\n`);
 }
 
 async function fetchText(url: string, init?: RequestInit) {
@@ -274,7 +284,7 @@ async function chooseCandidateWithIa(context: TebeosferaOcrContext, candidates: 
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: IA_MODEL,
+      model: OLLAMA_TEXT_MODEL,
       stream: false,
       keep_alive: OLLAMA_KEEP_ALIVE,
       messages: [
@@ -659,12 +669,12 @@ export async function scrapeComicMetaFromOcrContext(
     throw new Error("OCR context must include at least a title or collection, or you must pass a manual search title");
   }
 
-  logStderr("buscando titulo", `${searchTitle}, ${JSON.stringify(context)}`);
+  debug("buscando titulo", `${searchTitle}, ${JSON.stringify(context)}`);
 
-  const candidates = await searchNumbers(searchTitle);
-  logStderr(
+  const candidates = (await searchNumbers(searchTitle)).slice(0, 5);
+  debug(
     "candidatos",
-    candidates.map((candidate) => `${candidate.title} (${candidate.year ?? "?"}, ${candidate.publisher ?? "?"})`)
+    candidates.map((candidate) => formatSearchCandidate(candidate))
   );
 
   if (candidates.length === 0) {
@@ -678,7 +688,7 @@ export async function scrapeComicMetaFromOcrContext(
     throw new Error(`Ollama did not select a valid Tebeosfera candidate for "${searchTitle}"`);
   }
 
-  logStderr("candidato elegido", `${selected.title} (${selected.year ?? "?"}, ${selected.publisher ?? "?"})`);
+  debug("candidato elegido", formatSearchCandidate(selected));
 
   const issue = await scrapeIssue(selected.url, context);
   const title = issue.title || selected.title || selected.collectionTitle;

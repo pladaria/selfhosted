@@ -45,7 +45,6 @@ export type MangaUpdatesSeriesDetails = {
     artists: MangaUpdatesLinkedItem[];
     year: number | null;
     originalPublishers: MangaUpdatesLinkedItem[];
-    relatedSeries: MangaUpdatesLinkedItem[];
     rating: MangaUpdatesRatingSummary;
 };
 
@@ -419,7 +418,6 @@ export async function getSeries(urlOrPath: string): Promise<MangaUpdatesSeriesDe
     const authorsNode = sectionNodes.get('Author(s)');
     const artistsNode = sectionNodes.get('Artist(s)');
     const originalPublishersNode = sectionNodes.get('Original Publisher');
-    const relatedSeriesNode = sectionNodes.get('Related Series');
     const categories = getLinkedLabels($, sectionNodes.get('Categories'), [/^Show all/i, /^Log in to vote/i]);
     const genres = getLinkedLabels($, sectionNodes.get('Genre'), [/^Search for series of same genre/i]);
     const tags = unique([...categories, ...genres]);
@@ -438,7 +436,6 @@ export async function getSeries(urlOrPath: string): Promise<MangaUpdatesSeriesDe
         artists: artistsNode ? extractLinks($, artistsNode) : [],
         year: parseNumber(rawSections['Year']?.[0] ?? ''),
         originalPublishers: originalPublishersNode ? extractLinks($, originalPublishersNode) : [],
-        relatedSeries: relatedSeriesNode ? extractLinks($, relatedSeriesNode) : [],
         rating: parseRating(rawSections['User Rating'] ?? []),
     };
 }
