@@ -1,121 +1,250 @@
 {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "ComicMeta",
-    "description": "Comic metadata schema.",
-    "type": "object",
-    "required": ["title"],
-    "properties": {
-        "title": {
-            "type": "string"
-        },
-        "alternateTitles": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["locale", "title"],
-                "properties": {
-                    "locale": {
-                        "type": "string"
-                    },
-                    "title": {
-                        "type": "string"
-                    }
-                },
-                "additionalProperties": false
-            }
-        },
-        "volume": {
-            "type": "number"
-        },
-        "volumeCount": {
-            "type": "number"
-        },
-        "series": {
-            "type": "string"
-        },
-        "summary": {
-            "type": "string"
-        },
-        "notes": {
-            "type": "string"
-        },
-        "releaseDate": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": "Release date in yyyy-mm-dd format."
-        },
-        "artists": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["name", "role"],
-                "properties": {
-                    "name": {
-                        "type": "string"
-                    },
-                    "aka": {
-                        "type": "array",
-                        "description": "Alternative names, pen names, romanizations, or aliases used by the author.",
-                        "items": {
-                            "type": "string"
-                        }
-                    },
-                    "role": {
-                        "type": "string",
-                        "enum": [
-                            "writer",
-                            "penciller",
-                            "inker",
-                            "colorist",
-                            "letterer",
-                            "coverArtist",
-                            "author"
-                        ]
-                    }
-                },
-                "additionalProperties": false
-            }
-        },
-        "editor": {
-            "type": "string"
-        },
-        "publisher": {
-            "type": "string"
-        },
-        "genre": {
-            "type": "array",
-            "items": {
-                "type": "string"
-            }
-        },
-        "tags": {
-            "type": "array",
-            "items": {
-                "type": "string"
-            }
-        },
-        "pageCount": {
-            "type": "number"
-        },
-        "publishingTradition": {
-            "type": "string",
-            "description": "Publishing tradition or comics culture, e.g. manga, manhua, manhwa, franco-belgian, spanish, american, etc."
-        },
-        "demography": {
-            "type": "string",
-            "description": "Target demographic. Values shojo, seinen, shonen, kodomo, and josei apply to manga only.",
-            "enum": [
-                "shojo",
-                "seinen",
-                "shonen",
-                "kodomo",
-                "josei",
-                "children",
-                "young-adult",
-                "adult",
-                "adult-erotic"
-            ]
-        }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ComicMeta",
+  "description": "Comic metadata schema for strict OpenAI structured outputs.",
+  "type": "object",
+  "required": [
+    "title",
+    "alternateTitles",
+    "volume",
+    "volumeCount",
+    "series",
+    "summary",
+    "notes",
+    "releaseDate",
+    "artists",
+    "editor",
+    "publisher",
+    "genre",
+    "tags",
+    "pageCount",
+    "publishingTradition",
+    "demography"
+  ],
+  "properties": {
+    "title": {
+      "type": "string"
     },
-    "additionalProperties": false
+    "alternateTitles": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["locale", "title"],
+            "properties": {
+              "locale": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "volume": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "volumeCount": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "series": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "summary": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "releaseDate": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Release date in yyyy-mm-dd format."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "artists": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "aka", "role"],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "aka": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "description": "Alternative names, pen names, romanizations, or aliases used by the author.",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "writer",
+                  "penciller",
+                  "inker",
+                  "colorist",
+                  "letterer",
+                  "coverArtist",
+                  "author"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "editor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "publisher": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "genre": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tags": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pageCount": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "publishingTradition": {
+      "anyOf": [
+        {
+          "type": "string",
+          "description": "Publishing tradition or comics culture, e.g. manga, manhua, manhwa, franco-belgian, spanish, american, etc."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "demography": {
+      "anyOf": [
+        {
+          "type": "string",
+          "description": "Target demographic. Values shojo, seinen, shonen, kodomo, and josei apply to manga only.",
+          "enum": [
+            "shojo",
+            "seinen",
+            "shonen",
+            "kodomo",
+            "josei",
+            "children",
+            "young-adult",
+            "adult",
+            "adult-erotic"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
 }

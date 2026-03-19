@@ -177,7 +177,7 @@ async function main() {
 
   const response = await client.responses.create({
     model: MODEL,
-    reasoning: { effort: "low" },
+    reasoning: { effort: "medium" },
     tools: [{ type: "web_search" }],
     text: {
       format: {

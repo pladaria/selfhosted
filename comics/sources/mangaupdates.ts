@@ -2,6 +2,9 @@ import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.mangaupdates.com';
 const SEARCH_URL = `${BASE_URL}/site/search/result`;
+const REAL_USER_AGENT =
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+const RETRY_TIMEOUT_MS = 500;
 
 export type MangaUpdatesSeriesResult = {
     title: string;
@@ -36,34 +39,14 @@ export type MangaUpdatesSeriesDetails = {
     type: string | null;
     description: string | null;
     associatedNames: string[];
-    statusInCountryOfOrigin: string | null;
-    completelyScanlated: boolean | null;
-    animeStartEndChapter: string[];
     genres: string[];
-    categories: string[];
-    categoryRecommendations: string[];
-    recommendations: MangaUpdatesLinkedItem[];
+    tags: string[];
     authors: MangaUpdatesLinkedItem[];
     artists: MangaUpdatesLinkedItem[];
     year: number | null;
     originalPublishers: MangaUpdatesLinkedItem[];
-    serializedIn: MangaUpdatesLinkedItem[];
-    licensedInEnglish: boolean | null;
-    englishPublishers: MangaUpdatesLinkedItem[];
-    groupsScanlating: MangaUpdatesLinkedItem[];
     relatedSeries: MangaUpdatesLinkedItem[];
-    latestReleases: string[];
-    forum: {
-        summary: string | null;
-        url: string | null;
-    };
-    userReviews: string | null;
     rating: MangaUpdatesRatingSummary;
-    activityStats: string[];
-    listStats: string[];
-    lastUpdated: string | null;
-    rawSections: Record<string, string[]>;
-    schemaOrg: Record<string, unknown> | null;
 };
 
 function parseNumber(value: string) {
@@ -331,6 +314,62 @@ function parseSeriesSection(seriesSectionHtml: string) {
     return results;
 }
 
+function buildBrowserLikeHeaders(referer?: string) {
+    return {
+        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'accept-language': 'en-US,en;q=0.9,es;q=0.8',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+        priority: 'u=0, i',
+        referer: referer ?? BASE_URL,
+        'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Linux"',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'same-origin',
+        'sec-fetch-user': '?1',
+        'upgrade-insecure-requests': '1',
+        'user-agent': REAL_USER_AGENT,
+    };
+}
+
+async function fetchMangaUpdates(url: string, timeoutMs?: number) {
+    const controller = timeoutMs ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+    try {
+        const response = await fetch(url, {
+            headers: buildBrowserLikeHeaders(BASE_URL),
+            signal: controller?.signal,
+        });
+
+        if (!response.ok) {
+            throw new Error(`MangaUpdates request failed with ${response.status} ${response.statusText}`);
+        }
+
+        return response;
+    } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+            throw new Error(`MangaUpdates request timed out after ${timeoutMs}ms`);
+        }
+
+        throw error;
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    }
+}
+
+async function fetchMangaUpdatesWithRetry(url: string) {
+    try {
+        return await fetchMangaUpdates(url);
+    } catch {
+        return fetchMangaUpdates(url, RETRY_TIMEOUT_MS);
+    }
+}
+
 export async function search(query: string): Promise<MangaUpdatesSearchResponse> {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) {
@@ -340,15 +379,7 @@ export async function search(query: string): Promise<MangaUpdatesSearchResponse>
     const url = new URL(SEARCH_URL);
     url.searchParams.set('search', trimmedQuery);
 
-    const response = await fetch(url, {
-        headers: {
-            'user-agent': 'comics-scripts/1.0 (+https://www.mangaupdates.com)',
-        },
-    });
-
-    if (!response.ok) {
-        throw new Error(`MangaUpdates request failed with ${response.status} ${response.statusText}`);
-    }
+    const response = await fetchMangaUpdatesWithRetry(url.toString());
 
     const html = await response.text();
     const $ = cheerio.load(html);
@@ -363,15 +394,7 @@ export async function search(query: string): Promise<MangaUpdatesSearchResponse>
 
 export async function getSeries(urlOrPath: string): Promise<MangaUpdatesSeriesDetails> {
     const url = new URL(urlOrPath, BASE_URL).toString();
-    const response = await fetch(url, {
-        headers: {
-            'user-agent': 'comics-scripts/1.0 (+https://www.mangaupdates.com)',
-        },
-    });
-
-    if (!response.ok) {
-        throw new Error(`MangaUpdates request failed with ${response.status} ${response.statusText}`);
-    }
+    const response = await fetchMangaUpdatesWithRetry(url);
 
     const html = await response.text();
     const $ = cheerio.load(html);
@@ -393,15 +416,13 @@ export async function getSeries(urlOrPath: string): Promise<MangaUpdatesSeriesDe
         (typeof schemaOrg?.image === 'string' ? schemaOrg.image : null) ||
         null;
 
-    const recommendationsNode = sectionNodes.get('Recommendations');
     const authorsNode = sectionNodes.get('Author(s)');
     const artistsNode = sectionNodes.get('Artist(s)');
     const originalPublishersNode = sectionNodes.get('Original Publisher');
-    const serializedInNode = sectionNodes.get('Serialized In (magazine)');
-    const englishPublishersNode = sectionNodes.get('English Publisher');
-    const groupsNode = sectionNodes.get('Groups Scanlating');
     const relatedSeriesNode = sectionNodes.get('Related Series');
-    const forumNode = sectionNodes.get('Forum');
+    const categories = getLinkedLabels($, sectionNodes.get('Categories'), [/^Show all/i, /^Log in to vote/i]);
+    const genres = getLinkedLabels($, sectionNodes.get('Genre'), [/^Search for series of same genre/i]);
+    const tags = unique([...categories, ...genres]);
 
     return {
         id: parseSeriesId(url, schemaOrg),
@@ -411,41 +432,14 @@ export async function getSeries(urlOrPath: string): Promise<MangaUpdatesSeriesDe
         type: rawSections['Type']?.[0] ?? null,
         description: cleanDescription(rawSections, schemaOrg),
         associatedNames: rawSections['Associated Names'] ?? [],
-        statusInCountryOfOrigin: rawSections['Status in Country of Origin']?.join(' ') ?? null,
-        completelyScanlated: parseBoolean(rawSections['Completely Scanlated?']?.[0] ?? null),
-        animeStartEndChapter: rawSections['Anime Start/End Chapter'] ?? [],
-        genres: getLinkedLabels($, sectionNodes.get('Genre'), [/^Search for series of same genre/i]),
-        categories: getLinkedLabels($, sectionNodes.get('Categories'), [/^Show all/i, /^Log in to vote/i]),
-        categoryRecommendations: getLinkedLabels($, sectionNodes.get('Category Recommendations')),
-        recommendations: recommendationsNode ? extractLinks($, recommendationsNode) : [],
+        genres,
+        tags,
         authors: authorsNode ? extractLinks($, authorsNode) : [],
         artists: artistsNode ? extractLinks($, artistsNode) : [],
         year: parseNumber(rawSections['Year']?.[0] ?? ''),
         originalPublishers: originalPublishersNode ? extractLinks($, originalPublishersNode) : [],
-        serializedIn: serializedInNode ? extractLinks($, serializedInNode) : [],
-        licensedInEnglish: parseBoolean(rawSections['Licensed (in English)']?.[0] ?? null),
-        englishPublishers: englishPublishersNode ? extractLinks($, englishPublishersNode) : [],
-        groupsScanlating: groupsNode ? extractLinks($, groupsNode) : [],
         relatedSeries: relatedSeriesNode ? extractLinks($, relatedSeriesNode) : [],
-        latestReleases: cleanList(rawSections['Latest Release(s)'] ?? [], [
-            /^Search for all releases/i,
-            /^19 years ago$/i,
-        ]),
-        forum: {
-            summary: cleanList(rawSections['Forum'] ?? [], [/^Click here to view the forum$/i])[0] ?? null,
-            url: forumNode ? (extractLinks($, forumNode)[0]?.url ?? null) : null,
-        },
-        userReviews: rawSections['User Reviews']?.join(' ') ?? null,
         rating: parseRating(rawSections['User Rating'] ?? []),
-        activityStats: cleanList(rawSections['Activity Stats'] ?? [], [
-            /^(Weekly|Monthly|3 Month|6 Month|Year)$/,
-        ]),
-        listStats: cleanList(rawSections['List Stats'] ?? [], [/^\d+$/]),
-        lastUpdated: sectionNodes.get('Last Updated')
-            ? ($(sectionNodes.get('Last Updated')!).find('time').first().attr('datetime')?.trim() ?? null)
-            : null,
-        rawSections,
-        schemaOrg,
     };
 }
 
