@@ -1,0 +1,121 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "ComicMeta",
+    "description": "Comic metadata schema.",
+    "type": "object",
+    "required": ["title"],
+    "properties": {
+        "title": {
+            "type": "string"
+        },
+        "alternateTitles": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["locale", "title"],
+                "properties": {
+                    "locale": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        "volume": {
+            "type": "number"
+        },
+        "volumeCount": {
+            "type": "number"
+        },
+        "series": {
+            "type": "string"
+        },
+        "summary": {
+            "type": "string"
+        },
+        "notes": {
+            "type": "string"
+        },
+        "releaseDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Release date in yyyy-mm-dd format."
+        },
+        "artists": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name", "role"],
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "aka": {
+                        "type": "array",
+                        "description": "Alternative names, pen names, romanizations, or aliases used by the author.",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "role": {
+                        "type": "string",
+                        "enum": [
+                            "writer",
+                            "penciller",
+                            "inker",
+                            "colorist",
+                            "letterer",
+                            "coverArtist",
+                            "author"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        "editor": {
+            "type": "string"
+        },
+        "publisher": {
+            "type": "string"
+        },
+        "genre": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "pageCount": {
+            "type": "number"
+        },
+        "publishingTradition": {
+            "type": "string",
+            "description": "Publishing tradition or comics culture, e.g. manga, manhua, manhwa, franco-belgian, spanish, american, etc."
+        },
+        "demography": {
+            "type": "string",
+            "description": "Target demographic. Values shojo, seinen, shonen, kodomo, and josei apply to manga only.",
+            "enum": [
+                "shojo",
+                "seinen",
+                "shonen",
+                "kodomo",
+                "josei",
+                "children",
+                "young-adult",
+                "adult",
+                "adult-erotic"
+            ]
+        }
+    },
+    "additionalProperties": false
+}

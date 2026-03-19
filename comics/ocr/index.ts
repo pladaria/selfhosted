@@ -3,25 +3,116 @@ import {readFileSync} from 'fs';
 const OLLAMA_BASE_URL = 'http://localhost:11434';
 const OCR_MODEL = process.env.OCR_MODEL || 'gemma3:27b';
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || '1h';
+const ANSI_GRAY = '\x1b[90m';
+const ANSI_RESET = '\x1b[0m';
 
-export type ComicCoverOcrResult = {
-    title: string | null;
-    subtitle: string | null;
-    volume: string | null;
-    issue_number: string | null;
+export type ComicCoverOcrResult = Partial<{
+    title: string;
+    subtitle: string;
+    volume: string;
+    issue_number: string;
     authors: string[];
     artists: string[];
-    publisher: string | null;
-    collection: string | null;
-    language: string | null;
-    year: string | null;
+    publisher: string;
+    collection: string;
+    language: string;
+    work_type_estimate: string;
+    year: string;
     other_text: string[];
-    raw_text: string;
-};
+}>;
 
 function imageToBase64(imagePath: string): string {
     const buffer = readFileSync(imagePath);
     return buffer.toString('base64');
+}
+
+function logStderr(message: string, data?: unknown) {
+    if (data === undefined) {
+        process.stderr.write(`${ANSI_GRAY}${message}${ANSI_RESET}\n`);
+        return;
+    }
+
+    const payload = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    process.stderr.write(`${ANSI_GRAY}${message}: ${payload}${ANSI_RESET}\n`);
+}
+
+function normalizeString(value: unknown): string | undefined {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+
+    const normalized = value.trim().replace(/\s+/g, ' ');
+    if (!normalized) {
+        return undefined;
+    }
+
+    const lowered = normalized.toLowerCase();
+    if (lowered === 'unknown' || lowered === 'null' || lowered === 'undefined' || lowered === 'n/a') {
+        return undefined;
+    }
+
+    return normalized;
+}
+
+function normalizeStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+
+    const normalized = [...new Set(value.map((item) => normalizeString(item)).filter((item): item is string => Boolean(item)))];
+    return normalized.length > 0 ? normalized : undefined;
+}
+
+function cleanObject<T>(value: T): T {
+    if (Array.isArray(value)) {
+        return value.map((item) => cleanObject(item)).filter((item) => {
+            if (item === null || item === undefined) {
+                return false;
+            }
+
+            if (typeof item === 'string') {
+                return item.trim().length > 0;
+            }
+
+            if (Array.isArray(item)) {
+                return item.length > 0;
+            }
+
+            if (typeof item === 'object') {
+                return Object.keys(item).length > 0;
+            }
+
+            return true;
+        }) as T;
+    }
+
+    if (value && typeof value === 'object') {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .map(([key, child]) => [key, cleanObject(child)] as const)
+            .filter(([, child]) => {
+                if (child === null || child === undefined) {
+                    return false;
+                }
+
+                if (typeof child === 'string') {
+                    return child.trim().length > 0;
+                }
+
+                if (Array.isArray(child)) {
+                    return child.length > 0;
+                }
+
+                if (typeof child === 'object') {
+                    return Object.keys(child).length > 0;
+                }
+
+                return true;
+            });
+
+        return Object.fromEntries(entries) as T;
+    }
+
+    return value;
 }
 
 const systemPrompt = [
@@ -37,16 +128,23 @@ const systemPrompt = [
     "- publisher: Publisher name (e.g. 'Marvel', 'DC', 'Norma Editorial')",
     '- collection: Collection or imprint name if visible',
     '- language: Detected language of the text on the cover',
+    "- work_type_estimate: Estimated work tradition/type based on visual/textual cues (e.g. 'manga', 'manhwa', 'manhua', 'franco-belgian', 'american-comic', 'spanish-comic', 'graphic-novel'). Use null if uncertain",
     '- year: Publication year if visible',
     "- other_text: Any other text visible on the cover that doesn't fit the above fields",
-    '- raw_text: All text visible on the cover, concatenated',
     '',
     'Return ONLY valid JSON matching the schema above. No markdown, no explanations.',
     'If a field is not visible or cannot be determined, use null for strings, empty array for arrays.',
 ].join('\n');
 
 export async function ocrComicCover(imagePath: string): Promise<ComicCoverOcrResult> {
+    logStderr('leyendo imagen', imagePath);
     const base64Image = imageToBase64(imagePath);
+    logStderr('ejecutando ollama', {
+        url: `${OLLAMA_BASE_URL}/api/chat`,
+        model: OCR_MODEL,
+        keep_alive: OLLAMA_KEEP_ALIVE,
+        imagePath,
+    });
 
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
         method: 'POST',
@@ -83,22 +181,24 @@ export async function ocrComicCover(imagePath: string): Promise<ComicCoverOcrRes
         throw new Error('Ollama returned no content');
     }
 
-    const parsed = JSON.parse(content) as ComicCoverOcrResult;
+    const parsed = JSON.parse(content) as Record<string, unknown>;
 
-    return {
-        title: parsed.title ?? null,
-        subtitle: parsed.subtitle ?? null,
-        volume: parsed.volume ?? null,
-        issue_number: parsed.issue_number ?? null,
-        authors: Array.isArray(parsed.authors) ? parsed.authors : [],
-        artists: Array.isArray(parsed.artists) ? parsed.artists : [],
-        publisher: parsed.publisher ?? null,
-        collection: parsed.collection ?? null,
-        language: parsed.language ?? null,
-        year: parsed.year ?? null,
-        other_text: Array.isArray(parsed.other_text) ? parsed.other_text : [],
-        raw_text: parsed.raw_text ?? '',
-    };
+    const result = cleanObject({
+        title: normalizeString(parsed.title),
+        subtitle: normalizeString(parsed.subtitle),
+        volume: normalizeString(parsed.volume),
+        issue_number: normalizeString(parsed.issue_number),
+        authors: normalizeStringArray(parsed.authors),
+        artists: normalizeStringArray(parsed.artists),
+        publisher: normalizeString(parsed.publisher),
+        collection: normalizeString(parsed.collection),
+        language: normalizeString(parsed.language),
+        work_type_estimate: normalizeString(parsed.work_type_estimate),
+        year: normalizeString(parsed.year),
+        other_text: normalizeStringArray(parsed.other_text),
+    });
+
+    return result;
 }
 
 if (import.meta.main) {

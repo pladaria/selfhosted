@@ -8,7 +8,7 @@ runs with [Bun](https://bun.sh/).
 This project provides:
 
 - **Shell scripts** for converting and repacking comic archives (CBZ/CBR)
-- **Scraping sources** for fetching metadata from online databases (MangaUpdates, OpenLibrary, Tebeosfera)
+- **Scraping sources** for fetching metadata from online databases (MangaUpdates, Tebeosfera)
 - **AI-powered metadata inference** from filenames (OpenAI)
 - **Archive utilities** for reading CBZ/CBR files and extracting cover images
 - **OCR module** for extracting text and metadata from comic covers using Ollama (deepseek-ocr)
@@ -35,7 +35,7 @@ Utilities for reading compressed comic archives (`.cbz`, `.cbr`, `.zip`, `.rar`)
 
 ### `ocr/`
 
-OCR module that analyzes comic book cover images using a local Ollama instance with the deepseek-ocr model.
+OCR module that analyzes comic book cover images using a local Ollama instance.
 
 **Exports:**
 
@@ -44,14 +44,13 @@ OCR module that analyzes comic book cover images using a local Ollama instance w
 
 **Configuration (env vars):**
 
-- `OCR_MODEL` — Model name (default: `deepseek-ocr`)
+- `OCR_MODEL` — Model name (default: `gemma3:27b`)
 
 ### `sources/`
 
 Scraping modules for online comic/manga databases:
 
-- `manganime.ts` — MangaUpdates scraper
-- `openlibrary.ts` — OpenLibrary API client
+- `mangaupdates.ts` — MangaUpdates scraper
 - `tebeosfera.ts` — Tebeosfera scraper
 
 ## Scripts
