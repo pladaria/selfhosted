@@ -254,6 +254,7 @@ function postProcessComicMeta(result: Record<string, unknown>, sourceResults: So
 
     return cleanObject({
         ...result,
+        id: globalThis.crypto.randomUUID(),
         genre: genres,
         tags,
         publishingTradition: resolvePublishingTradition(result, sourceResults, ocrResult),
@@ -860,6 +861,8 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
             'You are a comic metadata aggregation specialist.',
             'You will receive markdown containing OCR data and validated scraper results.',
             'Produce a single JSON object that matches the provided ComicMeta schema.',
+            'The id field is required by the schema, but it is only a placeholder for structured output compliance.',
+            'You may put any non-empty string in id because the application will replace it with a real UUID v4 after generation.',
             'All output values must be in English except personal names and titles already established in another language.',
             'When a title is written in a non-Latin script such as Japanese, Chinese, Korean, Russian, Arabic, or similar, append a standard Latin transliteration in parentheses.',
             "For example: 'アキラ (Akira)'. Apply this rule to the main title and alternate titles when relevant.",

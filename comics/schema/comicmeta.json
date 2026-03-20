@@ -4,6 +4,7 @@
   "description": "Comic metadata schema for strict OpenAI structured outputs.",
   "type": "object",
   "required": [
+    "id",
     "title",
     "alternateTitles",
     "volumeCount",
@@ -20,6 +21,10 @@
     "demography"
   ],
   "properties": {
+    "id": {
+      "type": "string",
+      "description": "Required identifier field. The model may output any placeholder string; the application will replace it with a real UUID v4 during post-processing."
+    },
     "title": {
       "type": "string"
     },

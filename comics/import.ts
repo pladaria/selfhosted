@@ -5,6 +5,7 @@ import {extractFilenameMeta} from './sources/filename.ts';
 import {debug} from './utils/log.ts';
 
 type ComicMeta = Partial<{
+    id: string;
     title: string;
     alternateTitles: Array<{locale: string; title: string}>;
     volumeCount: number;
@@ -131,8 +132,21 @@ function mapTraditionFolder(publishingTradition: string | undefined) {
     }
 }
 
+function isSpanishLocale(locale: string | undefined) {
+    const normalized = normalizeWhitespace(locale || '').toLowerCase().replace(/_/g, '-');
+    return normalized === 'es' || normalized.startsWith('es-');
+}
+
+function getPreferredTitle(metadata: ComicMeta) {
+    const spanishAlternateTitle = metadata.alternateTitles?.find(
+        (item) => isSpanishLocale(item.locale) && normalizeWhitespace(item.title)
+    )?.title;
+
+    return spanishAlternateTitle || metadata.title || metadata.series || 'desconocido';
+}
+
 function getTitleFolder(metadata: ComicMeta) {
-    return sanitizePathSegment(metadata.title || metadata.series || 'desconocido', 'desconocido');
+    return sanitizePathSegment(getPreferredTitle(metadata), 'desconocido');
 }
 
 function getPublisherFolder(metadata: ComicMeta) {
