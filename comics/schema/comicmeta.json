@@ -12,6 +12,7 @@
     "notes",
     "releaseDate",
     "artists",
+    "publisher",
     "genre",
     "tags",
     "rating",
@@ -137,6 +138,16 @@
             },
             "additionalProperties": false
           }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "publisher": {
+      "anyOf": [
+        {
+          "type": "string"
         },
         {
           "type": "null"

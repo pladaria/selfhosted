@@ -1,3 +1,4 @@
+import {open} from 'node:fs/promises';
 import {tmpdir} from 'os';
 import {join} from 'path';
 import {randomBytes} from 'crypto';
@@ -6,7 +7,49 @@ type ArchiveType = 'zip' | 'rar';
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff', '.tif'];
 
-function detectArchiveType(filePath: string): ArchiveType {
+async function detectArchiveType(filePath: string): Promise<ArchiveType> {
+    const handle = await open(filePath, 'r');
+    try {
+        const buffer = Buffer.alloc(8);
+        const {bytesRead} = await handle.read(buffer, 0, buffer.length, 0);
+        const header = buffer.subarray(0, bytesRead);
+
+        const isZip =
+            header.length >= 4 &&
+            header[0] === 0x50 &&
+            header[1] === 0x4b &&
+            [0x03, 0x05, 0x07].includes(header[2]) &&
+            [0x04, 0x06, 0x08].includes(header[3]);
+        if (isZip) {
+            return 'zip';
+        }
+
+        const isRarV4 =
+            header.length >= 7 &&
+            header[0] === 0x52 &&
+            header[1] === 0x61 &&
+            header[2] === 0x72 &&
+            header[3] === 0x21 &&
+            header[4] === 0x1a &&
+            header[5] === 0x07 &&
+            header[6] === 0x00;
+        const isRarV5 =
+            header.length >= 8 &&
+            header[0] === 0x52 &&
+            header[1] === 0x61 &&
+            header[2] === 0x72 &&
+            header[3] === 0x21 &&
+            header[4] === 0x1a &&
+            header[5] === 0x07 &&
+            header[6] === 0x01 &&
+            header[7] === 0x00;
+        if (isRarV4 || isRarV5) {
+            return 'rar';
+        }
+    } finally {
+        await handle.close();
+    }
+
     const lower = filePath.toLowerCase();
     if (lower.endsWith('.cbr') || lower.endsWith('.rar')) return 'rar';
     if (lower.endsWith('.cbz') || lower.endsWith('.zip')) return 'zip';
@@ -86,7 +129,7 @@ async function extractFile(
  * Returns the path to the extracted image in a temporary location.
  */
 export async function getCoverFile(archivePath: string): Promise<string> {
-    const type = detectArchiveType(archivePath);
+    const type = await detectArchiveType(archivePath);
     const files = await listFiles(archivePath, type);
 
     const images = files.filter(isImageFile).sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));

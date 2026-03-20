@@ -114,6 +114,80 @@ function uniqueStrings(values: string[]) {
     return [...new Set(values.map((value) => normalizeWhitespace(value)).filter(Boolean))];
 }
 
+function uniqueStringsCaseInsensitive(values: string[]) {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const value of values.map((item) => normalizeWhitespace(item)).filter(Boolean)) {
+        const key = value.toLocaleLowerCase();
+        if (seen.has(key)) {
+            continue;
+        }
+
+        seen.add(key);
+        result.push(value);
+    }
+
+    return result;
+}
+
+function normalizePublishingTraditionValue(value: unknown) {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+
+    const normalized = normalizeWhitespace(value).toLowerCase().replace(/_/g, '-');
+    if (!normalized) {
+        return undefined;
+    }
+
+    switch (normalized) {
+        case 'american-comic':
+        case 'american comic':
+        case 'comic americano':
+            return 'american';
+        case 'spanish-comic':
+        case 'spanish comic':
+            return 'spanish';
+        case 'franco belgian':
+            return 'franco-belgian';
+        case 'graphic novel':
+        case 'graphic-novel':
+            return 'graphic-novel';
+        default:
+            return normalized;
+    }
+}
+
+function resolvePublishingTradition(
+    result: Record<string, unknown>,
+    sourceResults: SourceRunResult[],
+    ocrResult?: ComicCoverOcrResult
+) {
+    const current = normalizePublishingTraditionValue(result.publishingTradition);
+    if (current && current !== 'graphic-novel') {
+        return current;
+    }
+
+    const sourcePriority = ['tebeosfera', 'mangaupdates', 'filename'];
+    const sourceCandidates = sourcePriority
+        .map((sourceName) => sourceResults.find((result) => result.source === sourceName && result.accepted))
+        .filter((result): result is SourceRunResult => Boolean(result))
+        .map((result) => normalizePublishingTraditionValue(buildSourceCandidate(result.source, result.data ?? {}).publishingTradition))
+        .filter((value): value is string => Boolean(value) && value !== 'graphic-novel');
+
+    if (sourceCandidates[0]) {
+        return sourceCandidates[0];
+    }
+
+    const ocrCandidate = normalizePublishingTraditionValue(ocrResult?.work_type_estimate);
+    if (ocrCandidate && ocrCandidate !== 'graphic-novel') {
+        return ocrCandidate;
+    }
+
+    return current;
+}
+
 function cleanObject<T>(value: T): T {
     if (Array.isArray(value)) {
         return value
@@ -168,7 +242,7 @@ function cleanObject<T>(value: T): T {
     return value;
 }
 
-function postProcessComicMeta(result: Record<string, unknown>) {
+function postProcessComicMeta(result: Record<string, unknown>, sourceResults: SourceRunResult[], ocrResult?: ComicCoverOcrResult) {
     const genres = Array.isArray(result.genre)
         ? uniqueStrings(result.genre.filter((genre): genre is string => typeof genre === 'string'))
         : undefined;
@@ -186,6 +260,7 @@ function postProcessComicMeta(result: Record<string, unknown>) {
         ...result,
         genre: genres,
         tags,
+        publishingTradition: resolvePublishingTradition(result, sourceResults, ocrResult),
     });
 }
 
@@ -248,12 +323,30 @@ async function getExistingFolderCoverPath(dirPath: string) {
     return folderFiles[0] ?? null;
 }
 
+async function removeExistingFolderCoverPaths(dirPath: string) {
+    const entries = await readdir(dirPath, {withFileTypes: true});
+    const folderFiles = entries
+        .filter((entry) => entry.isFile() && /^folder\.[^.]+$/i.test(entry.name))
+        .map((entry) => join(dirPath, entry.name));
+
+    await Promise.all(folderFiles.map((filePath) => unlink(filePath).catch(() => {})));
+}
+
 async function ensureFolderCoverForArchive(archivePath: string) {
     const existingCoverPath = await getExistingFolderCoverPath(dirname(archivePath));
     if (existingCoverPath) {
         return existingCoverPath;
     }
 
+    debug('extrayendo portada', archivePath);
+    const extractedCoverPath = await getCoverFile(archivePath);
+    const coverPath = await persistCoverFile(archivePath, extractedCoverPath);
+    debug('portada guardada', coverPath);
+    return coverPath;
+}
+
+async function extractFreshFolderCoverForArchive(archivePath: string) {
+    await removeExistingFolderCoverPaths(dirname(archivePath));
     debug('extrayendo portada', archivePath);
     const extractedCoverPath = await getCoverFile(archivePath);
     const coverPath = await persistCoverFile(archivePath, extractedCoverPath);
@@ -414,7 +507,7 @@ function buildSearchTitles(
     const filenameTitle = typeof filenameData?.title === 'string' ? filenameData.title : '';
     const ocrTitle = buildSearchTitle(ocrResult, archivePath);
 
-    return uniqueStrings([...filenameQueryTexts, filenameTitle, ocrTitle].filter(Boolean));
+    return uniqueStringsCaseInsensitive([...filenameQueryTexts, filenameTitle, ocrTitle].filter(Boolean));
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -768,6 +861,9 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
             'Use other sources to enrich, normalize, or transliterate the chosen title, but do not replace a correct validated filename title unnecessarily.',
             'Treat the final JSON as metadata for the underlying work or series in general, not for one specific collected edition, printing, binding, or volume package.',
             'Prefer the canonical work title, not the edition-marketing title.',
+            'publishingTradition must describe the actual comics tradition or market, such as manga, manhwa, manhua, american, franco-belgian, spanish, or portuguese.',
+            'Do not use publishingTradition for format labels such as graphic novel, album, omnibus, deluxe, hardcover, or similar packaging/release terms.',
+            'If a work is a graphic novel in format but belongs to a tradition like franco-belgian, spanish, or american, set publishingTradition to that tradition instead.',
             'Do not include edition labels or packaging descriptors in title or alternateTitles unless they are clearly part of the true canonical title of the work itself.',
             "This means you should usually exclude words or phrases such as 'Integral', 'Deluxe', 'Absolute', 'Omnibus', 'Ultimate Edition', 'Edicion Integral', and similar edition wording when they only describe the release format.",
             'Do not include volume numbers, tome numbers, book numbers, or similar installment packaging in title or alternateTitles when describing the work as a whole.',
@@ -785,7 +881,7 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
             "Do not keep labels like 'Información de la editorial' in summary unless they are part of the actual synopsis.",
             'Use notes only for meaningful extra context about the work itself that does not fit better in another field, such as adaptation context, author commentary, controversies, or source ambiguities.',
             'Prefer notes to be empty rather than filled with duplicated, obvious, or redundant metadata.',
-            'Do not put into notes facts already represented in structured fields such as title, alternateTitles, artists, releaseDate, volumeCount, genre, tags, publishingTradition, demography, or related works.',
+            'Do not put into notes facts already represented in structured fields such as title, alternateTitles, artists, publisher, releaseDate, volumeCount, genre, tags, publishingTradition, demography, or related works.',
             'Do not use notes for edition-specific quirks, packaging details, bonus contents tied only to a particular release, or publication facts already represented elsewhere, including original publisher, publisher country, release year/date, edition title, creator identity, genre-like descriptors, or lists of related works.',
             'Do not use notes to describe what a specific edition, omnibus, integral, deluxe, or volume release collects, reprints, or corresponds to.',
             'Do not include mappings such as a specific volume containing issues 1-3, collecting volumes 1-3, or corresponding to a particular release package.',
@@ -847,7 +943,7 @@ export async function getComicMeta(archivePath: string) {
     const filenamePromise = runFilenameSource(archivePath);
     const schemaPromise = Bun.file('./schema/comicmeta.json').text();
 
-    const coverPath = await ensureFolderCoverForArchive(archivePath);
+    const coverPath = await extractFreshFolderCoverForArchive(archivePath);
     debug('ejecutando ocr');
     const ocrResult = await ocrComicCover(coverPath);
     debug('ocr completado', ocrResult);
@@ -881,7 +977,9 @@ export async function getComicMeta(archivePath: string) {
     }
 
     const finalResult = postProcessComicMeta(
-        await aggregateComicMeta(client, markdown, JSON.parse(schemaText) as JsonSchema)
+        await aggregateComicMeta(client, markdown, JSON.parse(schemaText) as JsonSchema),
+        sourceResults,
+        ocrResult
     );
     debug(
         'fuentes aceptadas',
