@@ -9,10 +9,6 @@ import * as mangaupdates from './sources/mangaupdates.ts';
 import * as tebeosfera from './sources/tebeosfera.ts';
 import {debug} from './utils/log.ts';
 
-const OLLAMA_BASE_URL = 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_TEXT_MODEL || 'gemma3:27b';
-const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || '1h';
-const OLLAMA_TEMPERATURE = Number(process.env.OLLAMA_TEMPERATURE ?? '0');
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.4-mini';
 const OPENAI_REASONING_EFFORT = (process.env.OPENAI_REASONING_EFFORT || 'low') as 'low' | 'medium' | 'high';
 const ERROR_LOG_PATH = '/tmp/comic-meta.log';
@@ -434,39 +430,6 @@ function extractText(response: Awaited<ReturnType<OpenAI['responses']['create']>
     throw new Error('OpenAI returned no text output.');
 }
 
-async function runOllamaJson<T>(systemPrompt: string, userPrompt: string): Promise<T> {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            model: OLLAMA_MODEL,
-            stream: false,
-            keep_alive: OLLAMA_KEEP_ALIVE,
-            temperature: OLLAMA_TEMPERATURE,
-            messages: [
-                {role: 'system', content: systemPrompt},
-                {role: 'user', content: userPrompt},
-            ],
-            format: 'json',
-        }),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama API error (${response.status}): ${errorText}`);
-    }
-
-    const data = (await response.json()) as {message?: {content?: string}};
-    const content = data.message?.content;
-    if (!content) {
-        throw new Error('Ollama returned no content');
-    }
-
-    return JSON.parse(content) as T;
-}
-
 async function runOpenAiJson<T>(
     client: OpenAI,
     schemaName: string,
@@ -677,13 +640,25 @@ async function chooseMangaUpdatesCandidate(
 }
 
 async function validateSource(
+    client: OpenAI,
     source: string,
     reference: SourceReference,
     data: Record<string, unknown>
 ): Promise<ValidationDecision> {
     const candidate = buildSourceCandidate(source, data);
 
-    return runOllamaJson<ValidationDecision>(
+    return runOpenAiJson<ValidationDecision>(
+        client,
+        'validation_decision',
+        {
+            type: 'object',
+            additionalProperties: false,
+            required: ['match', 'reason'],
+            properties: {
+                match: {type: 'boolean'},
+                reason: {type: 'string'},
+            },
+        },
         [
             'Determine if the source result refers to the same comic work as the OCR reference.',
             'Be tolerant to subtle title wording differences, punctuation, accents, translations, and abbreviations.',
@@ -746,7 +721,7 @@ async function runMangaUpdatesScraper(
             });
 
             const details = toRecord(await mangaupdates.getSeries(selected.url));
-            const validation = await validateSource('mangaupdates', buildReference(context), details);
+            const validation = await validateSource(client, 'mangaupdates', buildReference(context), details);
 
             debug('[mangaupdates] validacion', validation);
             if (!validation.match) {
@@ -777,6 +752,7 @@ async function runMangaUpdatesScraper(
 }
 
 async function runFilenameSource(
+    client: OpenAI,
     archivePath: string,
     context?: ComicCoverOcrResult
 ): Promise<SourceRunResult> {
@@ -784,7 +760,7 @@ async function runFilenameSource(
         debug('[filename] analizando', {archivePath});
         const data = toRecord(await filename.extractFilenameMeta(archivePath, context));
         debug('[filename] resultado', data);
-        const validation = context ? await validateSource('filename', buildReference(context), data) : null;
+        const validation = context ? await validateSource(client, 'filename', buildReference(context), data) : null;
         if (validation) {
             debug('[filename] validacion', validation);
         }
@@ -820,7 +796,7 @@ async function runTebeosferaScraper(
                     openAiClient: client,
                 })
             );
-            const validation = await validateSource('tebeosfera', buildReference(context), data);
+            const validation = await validateSource(client, 'tebeosfera', buildReference(context), data);
             debug('[tebeosfera] validacion', validation);
 
             if (!validation.match) {
@@ -902,7 +878,18 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
             'Use other sources to enrich, normalize, or transliterate the chosen title, but do not replace a correct validated filename title unnecessarily.',
             'Treat the final JSON as metadata for the underlying work or series in general, not for one specific collected edition, printing, binding, or volume package.',
             'Prefer the canonical work title, not the edition-marketing title.',
+            'publisher should normally be the original publisher of the work or series in its original market, not the publisher of a later local translation, reprint, or licensed edition.',
+            'When the original publisher is known with high confidence, use it even if OCR or a local catalog page shows only the publisher of the translated edition.',
+            'When the sources conflict, prefer the original publication context over the current release packaging or local-language edition metadata.',
+            'You may use your own knowledge for the original publisher when you are highly confident; otherwise rely on the provided sources and choose the most likely original publisher supported by them.',
+            'Do not switch publisher to a Spanish, French, or other local edition publisher merely because that is the visible edition being scanned or catalogued.',
             'publishingTradition must describe the actual comics tradition or market, such as manga, manhwa, manhua, american, franco-belgian, spanish, or portuguese.',
+            'Determine publishingTradition from the underlying work itself, using the original creative and publication context rather than the current edition language, store, publisher of a translation, or source website.',
+            'When needed, use your own knowledge to identify the true tradition of the work from the creators, original market, and historically established classification.',
+            'Do not classify a work as franco-belgian, spanish, or another local tradition just because the available edition is in French or Spanish, or because a Spanish catalog page is one of the sources.',
+            'A work by U.S. creators that belongs to the U.S. comics tradition should be american even if the available edition, title variant, or source page is in another language.',
+            'Prefer the original market and creator context over the release language or translation imprint when those signals conflict.',
+            'If the sources conflict on publishingTradition, resolve the conflict using the best-supported real-world classification of the work, not by majority vote among noisy sources.',
             'Do not use publishingTradition for format labels such as graphic novel, album, omnibus, deluxe, hardcover, or similar packaging/release terms.',
             'If a work is a graphic novel in format but belongs to a tradition like franco-belgian, spanish, or american, set publishingTradition to that tradition instead.',
             'Do not include edition labels or packaging descriptors in title or alternateTitles unless they are clearly part of the true canonical title of the work itself.',
@@ -981,7 +968,7 @@ export async function getComicMeta(archivePath: string) {
     }
 
     const client = new OpenAI({apiKey});
-    const filenamePromise = runFilenameSource(archivePath);
+    const filenamePromise = runFilenameSource(client, archivePath);
     const schemaPromise = Bun.file('./schema/comicmeta.json').text();
 
     const coverPath = await extractFreshFolderCoverForArchive(archivePath);

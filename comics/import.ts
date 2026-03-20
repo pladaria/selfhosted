@@ -32,7 +32,10 @@ function sortNaturally(values: string[]) {
 }
 
 function normalizeWhitespace(value: string) {
-    return value.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    return value
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 function slugifySegment(value: string, fallback: string) {
@@ -61,8 +64,9 @@ function buildImportCacheKey(value: string | undefined) {
 }
 
 async function listComicFiles(rootDir: string): Promise<string[]> {
-    const entries = (await readdir(rootDir, {withFileTypes: true}))
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}));
+    const entries = (await readdir(rootDir, {withFileTypes: true})).sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'})
+    );
     const files: string[] = [];
 
     for (const entry of entries) {
@@ -115,6 +119,7 @@ function mapTraditionFolder(publishingTradition: string | undefined) {
         case 'manga':
             return 'manga';
         case 'franco belgian':
+        case 'french comic':
             return 'franco-belga';
         case 'spanish':
         case 'spanish comic':
@@ -160,7 +165,10 @@ async function getFilenameTitleKey(archivePath: string) {
     try {
         const filenameMeta = await extractFilenameMeta(archivePath);
         const key = buildImportCacheKey(
-            filenameMeta.title || filenameMeta.collection || filenameMeta.query_texts?.at(-1) || basename(archivePath)
+            filenameMeta.title ||
+                filenameMeta.collection ||
+                filenameMeta.query_texts?.at(-1) ||
+                basename(archivePath)
         );
         if (key) {
             return key;

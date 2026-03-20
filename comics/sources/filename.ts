@@ -1,10 +1,12 @@
+import OpenAI from "openai";
 import { basename } from "node:path";
 import type { ComicCoverOcrResult } from "../ocr/index.ts";
+import { logOpenAiCost } from "../ai/pricing.ts";
 
-const OLLAMA_BASE_URL = "http://localhost:11434";
-const OLLAMA_TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || "gemma3:27b";
-const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "1h";
-const OLLAMA_TEMPERATURE = Number(process.env.OLLAMA_TEMPERATURE ?? "0");
+type JsonSchema = Record<string, unknown>;
+
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+const OPENAI_REASONING_EFFORT = (process.env.OPENAI_REASONING_EFFORT || "low") as "low" | "medium" | "high";
 
 export type FilenameSourceResult = {
   title?: string;
@@ -168,43 +170,113 @@ const systemPrompt = [
   'Example: if the filename clearly indicates "Spawn Edicion Integral", query_texts can be ["spawn edicion integral", "spawn"].'
 ].join("\n");
 
+const filenameSourceSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "title",
+    "subtitle",
+    "query_texts",
+    "authors",
+    "artists",
+    "year",
+    "volume",
+    "volumeCount",
+    "issue_number",
+    "scan_group",
+    "translation_group",
+    "release_group",
+    "publisher",
+    "collection",
+    "language",
+    "source_url",
+    "format",
+    "publishingTradition",
+    "release_type",
+    "notes",
+    "other"
+  ],
+  properties: {
+    title: { anyOf: [{ type: "string" }, { type: "null" }] },
+    subtitle: { anyOf: [{ type: "string" }, { type: "null" }] },
+    query_texts: { type: "array", items: { type: "string" } },
+    authors: { type: "array", items: { type: "string" } },
+    artists: { type: "array", items: { type: "string" } },
+    year: { anyOf: [{ type: "string" }, { type: "null" }] },
+    volume: { anyOf: [{ type: "string" }, { type: "null" }] },
+    volumeCount: { anyOf: [{ type: "string" }, { type: "null" }] },
+    issue_number: { anyOf: [{ type: "string" }, { type: "null" }] },
+    scan_group: { anyOf: [{ type: "string" }, { type: "null" }] },
+    translation_group: { anyOf: [{ type: "string" }, { type: "null" }] },
+    release_group: { anyOf: [{ type: "string" }, { type: "null" }] },
+    publisher: { anyOf: [{ type: "string" }, { type: "null" }] },
+    collection: { anyOf: [{ type: "string" }, { type: "null" }] },
+    language: { anyOf: [{ type: "string" }, { type: "null" }] },
+    source_url: { anyOf: [{ type: "string" }, { type: "null" }] },
+    format: { anyOf: [{ type: "string" }, { type: "null" }] },
+    publishingTradition: { anyOf: [{ type: "string" }, { type: "null" }] },
+    release_type: { anyOf: [{ type: "string" }, { type: "null" }] },
+    notes: { type: "array", items: { type: "string" } },
+    other: { type: "array", items: { type: "string" } }
+  }
+};
+
+function getApiKey() {
+  return process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY || null;
+}
+
+function extractText(response: Awaited<ReturnType<OpenAI["responses"]["create"]>>) {
+  if (response.output_text && response.output_text.trim()) {
+    return response.output_text;
+  }
+
+  for (const item of response.output ?? []) {
+    if (item.type !== "message") {
+      continue;
+    }
+
+    for (const content of item.content ?? []) {
+      if (content.type === "output_text" && content.text?.trim()) {
+        return content.text;
+      }
+    }
+  }
+
+  throw new Error("OpenAI returned no text output.");
+}
+
 export async function extractFilenameMeta(
   input: string,
   context?: Partial<ComicCoverOcrResult>
 ): Promise<FilenameSourceResult> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("Missing OPENAI_API_KEY environment variable. OPEN_API_KEY is also accepted.");
+  }
+
+  const client = new OpenAI({ apiKey });
   const payload = {
     filename: normalizeFilenameInput(input),
     ocr_context: context ?? {}
   };
 
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_TEXT_MODEL,
-      stream: false,
-      keep_alive: OLLAMA_KEEP_ALIVE,
-      temperature: OLLAMA_TEMPERATURE,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: JSON.stringify(payload, null, 2) }
-      ],
-      format: "json"
-    })
+  const response = await client.responses.create({
+    model: OPENAI_MODEL,
+    reasoning: { effort: OPENAI_REASONING_EFFORT },
+    text: {
+      format: {
+        type: "json_schema",
+        name: "filename_metadata",
+        strict: true,
+        schema: filenameSourceSchema
+      }
+    },
+    instructions: systemPrompt,
+    input: JSON.stringify(payload, null, 2)
   });
+  logOpenAiCost("[filename]", OPENAI_MODEL, response);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Ollama API error (${response.status}): ${errorText}`);
-  }
-
-  const data = (await response.json()) as { message?: { content?: string } };
-  const content = data.message?.content;
-  if (!content) {
-    throw new Error("Ollama returned no content");
-  }
-
-  const parsed = JSON.parse(content) as Record<string, unknown>;
+  const parsed = JSON.parse(extractText(response)) as Record<string, unknown>;
 
   return cleanObject({
     title: normalizeString(parsed.title),

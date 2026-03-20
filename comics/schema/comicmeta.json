@@ -147,7 +147,8 @@
     "publisher": {
       "anyOf": [
         {
-          "type": "string"
+          "type": "string",
+          "description": "Prefer the original publisher of the work in its original market, not the publisher of a later translation, local edition, or licensed reprint, unless the original publisher is genuinely unknown."
         },
         {
           "type": "null"
@@ -197,7 +198,7 @@
       "anyOf": [
         {
           "type": "string",
-          "description": "Publishing tradition or comics culture, e.g. manga, manhua, manhwa, franco-belgian, spanish, american, etc."
+          "description": "Publishing tradition of the underlying work itself, based on its original creative and publication context rather than the language or country of a later edition, translation, catalog page, or seller. Examples: manga, manhua, manhwa, franco-belgian, spanish, american, portuguese."
         },
         {
           "type": "null"
