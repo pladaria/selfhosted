@@ -53,11 +53,15 @@ function slugifySegment(value: string, fallback: string) {
 
 function sanitizePathSegment(value: string, fallback: string) {
     const sanitized = normalizeWhitespace(value)
-        .replace(/[\/\\:*?"<>|]/g, ' ')
-        .replace(/\.+$/g, '')
+        .replace(/\0/g, ' ')
+        .replace(/\//g, ' ')
         .trim();
 
-    return sanitized || fallback;
+    if (!sanitized || sanitized === '.' || sanitized === '..') {
+        return fallback;
+    }
+
+    return sanitized;
 }
 
 function buildImportCacheKey(value: string | undefined) {
@@ -132,21 +136,8 @@ function mapTraditionFolder(publishingTradition: string | undefined) {
     }
 }
 
-function isSpanishLocale(locale: string | undefined) {
-    const normalized = normalizeWhitespace(locale || '').toLowerCase().replace(/_/g, '-');
-    return normalized === 'es' || normalized.startsWith('es-');
-}
-
-function getPreferredTitle(metadata: ComicMeta) {
-    const spanishAlternateTitle = metadata.alternateTitles?.find(
-        (item) => isSpanishLocale(item.locale) && normalizeWhitespace(item.title)
-    )?.title;
-
-    return spanishAlternateTitle || metadata.title || metadata.series || 'desconocido';
-}
-
 function getTitleFolder(metadata: ComicMeta) {
-    return sanitizePathSegment(getPreferredTitle(metadata), 'desconocido');
+    return sanitizePathSegment(metadata.title || metadata.series || 'desconocido', 'desconocido');
 }
 
 function getPublisherFolder(metadata: ComicMeta) {
