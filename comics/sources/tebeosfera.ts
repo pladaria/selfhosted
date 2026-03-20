@@ -1,13 +1,12 @@
 import * as cheerio from "cheerio";
+import OpenAI from "openai";
 import { readFile } from "node:fs/promises";
 import { debug } from "../utils/log.ts";
 
 const BASE_URL = "https://www.tebeosfera.com";
 const SEARCH_ENDPOINT = `${BASE_URL}/neko/templates/ajax/buscador_txt_post.php`;
-const OLLAMA_BASE_URL = "http://localhost:11434";
-const OLLAMA_TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || "gemma3:27b";
-const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "1h";
-const OLLAMA_TEMPERATURE = Number(process.env.OLLAMA_TEMPERATURE ?? "0");
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+const OPENAI_REASONING_EFFORT = (process.env.OPENAI_REASONING_EFFORT || "low") as "low" | "medium" | "high";
 const REAL_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
@@ -28,6 +27,7 @@ export type TebeosferaOcrContext = {
 
 export type ScrapeComicMetaOptions = {
   searchTitle?: string;
+  openAiClient?: OpenAI;
 };
 
 export type ComicMeta = {
@@ -115,6 +115,30 @@ function slugifyQuery(query: string) {
 
 function uniqueStrings(values: string[]) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function getApiKey() {
+  return process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY || null;
+}
+
+function extractText(response: Awaited<ReturnType<OpenAI["responses"]["create"]>>) {
+  if (response.output_text && response.output_text.trim()) {
+    return response.output_text;
+  }
+
+  for (const item of response.output ?? []) {
+    if (item.type !== "message") {
+      continue;
+    }
+
+    for (const content of item.content ?? []) {
+      if (content.type === "output_text" && content.text?.trim()) {
+        return content.text;
+      }
+    }
+  }
+
+  throw new Error("OpenAI returned no text output.");
 }
 
 function formatSearchCandidate(candidate: SearchCandidate) {
@@ -264,75 +288,68 @@ async function searchNumbers(query: string): Promise<SearchCandidate[]> {
   return results;
 }
 
-async function chooseCandidateWithIa(context: TebeosferaOcrContext, candidates: SearchCandidate[]) {
+async function chooseCandidateWithIa(
+  client: OpenAI,
+  context: TebeosferaOcrContext,
+  candidates: SearchCandidate[]
+) {
   if (candidates.length === 0) {
     return null;
   }
 
-  const prompt = [
-    "You select the best Tebeosfera issue candidate for a comic cover OCR context.",
-    "The candidates all come from Tebeosfera's Números search results.",
-    "Prioritize exact work/title match first.",
-    "Use author names, publisher, year, work_type_estimate, volume, issue_number, and collection as tie-breakers.",
-    "Reject candidates that clearly refer to a different work, even if some words overlap.",
-    "Prefer the visible cover title over collection titles when they differ.",
-    'Return ONLY valid JSON like {"selected_url":"...","reason":"brief"} or {"selected_url":null,"reason":"brief"}.'
-  ].join("\n");
-
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      model: OLLAMA_TEXT_MODEL,
-      stream: false,
-      keep_alive: OLLAMA_KEEP_ALIVE,
-      temperature: OLLAMA_TEMPERATURE,
-      messages: [
-        { role: "system", content: prompt },
-        {
-          role: "user",
-          content: [
-            "OCR context:",
-            JSON.stringify(context, null, 2),
-            "",
-            "Candidates:",
-            JSON.stringify(
-              candidates.map((candidate) => ({
-                url: candidate.url,
-                title: candidate.title,
-                collectionTitle: candidate.collectionTitle,
-                year: candidate.year,
-                publisher: candidate.publisher,
-                subtitle: candidate.subtitle,
-                releaseDateText: candidate.releaseDateText,
-                format: candidate.format,
-                pageCount: candidate.pageCount,
-                color: candidate.color
-              })),
-              null,
-              2
-            )
-          ].join("\n")
+  const response = await client.responses.create({
+    model: OPENAI_MODEL,
+    reasoning: { effort: OPENAI_REASONING_EFFORT },
+    text: {
+      format: {
+        type: "json_schema",
+        name: "tebeosfera_selection",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["selected_url", "reason"],
+          properties: {
+            selected_url: { type: ["string", "null"] },
+            reason: { type: "string" }
+          }
         }
-      ],
-      format: "json"
-    })
+      }
+    },
+    instructions: [
+      "You select the best Tebeosfera issue candidate for a comic cover OCR context.",
+      "The candidates all come from Tebeosfera's Números search results.",
+      "Prioritize exact work/title match first.",
+      "Use author names, publisher, year, work_type_estimate, volume, issue_number, and collection as tie-breakers.",
+      "Reject candidates that clearly refer to a different work, even if some words overlap.",
+      "Prefer the visible cover title over collection titles when they differ.",
+      'Return ONLY valid JSON like {"selected_url":"...","reason":"brief"} or {"selected_url":null,"reason":"brief"}.'
+    ].join("\n"),
+    input: [
+      "OCR context:",
+      JSON.stringify(context, null, 2),
+      "",
+      "Candidates:",
+      JSON.stringify(
+        candidates.map((candidate) => ({
+          url: candidate.url,
+          title: candidate.title,
+          collectionTitle: candidate.collectionTitle,
+          year: candidate.year,
+          publisher: candidate.publisher,
+          subtitle: candidate.subtitle,
+          releaseDateText: candidate.releaseDateText,
+          format: candidate.format,
+          pageCount: candidate.pageCount,
+          color: candidate.color
+        })),
+        null,
+        2
+      )
+    ].join("\n")
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Ollama API error (${response.status}): ${errorText}`);
-  }
-
-  const data = (await response.json()) as { message?: { content?: string } };
-  const content = data.message?.content;
-  if (!content) {
-    throw new Error("Ollama returned no content");
-  }
-
-  return JSON.parse(content) as RankedSelection;
+  return JSON.parse(extractText(response)) as RankedSelection;
 }
 
 function extractFieldValue($: cheerio.CheerioAPI, label: string) {
@@ -671,6 +688,17 @@ export async function scrapeComicMetaFromOcrContext(
     throw new Error("OCR context must include at least a title or collection, or you must pass a manual search title");
   }
 
+  const client =
+    options.openAiClient ??
+    (() => {
+      const apiKey = getApiKey();
+      if (!apiKey) {
+        throw new Error("Missing OPENAI_API_KEY environment variable. OPEN_API_KEY is also accepted.");
+      }
+
+      return new OpenAI({ apiKey });
+    })();
+
   debug("buscando titulo", `${searchTitle}, ${JSON.stringify(context)}`);
 
   const candidates = (await searchNumbers(searchTitle)).slice(0, 5);
@@ -683,11 +711,11 @@ export async function scrapeComicMetaFromOcrContext(
     throw new Error(`No Tebeosfera candidates found for "${searchTitle}"`);
   }
 
-  const selection = await chooseCandidateWithIa(context, candidates);
+  const selection = await chooseCandidateWithIa(client, context, candidates);
   const selected = candidates.find((candidate) => candidate.url === selection?.selected_url) ?? null;
 
   if (!selected) {
-    throw new Error(`Ollama did not select a valid Tebeosfera candidate for "${searchTitle}"`);
+    throw new Error(`OpenAI did not select a valid Tebeosfera candidate for "${searchTitle}"`);
   }
 
   debug("candidato elegido", formatSearchCandidate(selected));

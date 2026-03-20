@@ -467,6 +467,31 @@ async function runOllamaJson<T>(systemPrompt: string, userPrompt: string): Promi
     return JSON.parse(content) as T;
 }
 
+async function runOpenAiJson<T>(
+    client: OpenAI,
+    schemaName: string,
+    schema: JsonSchema,
+    instructions: string,
+    input: string
+): Promise<T> {
+    const response = await client.responses.create({
+        model: OPENAI_MODEL,
+        reasoning: {effort: OPENAI_REASONING_EFFORT},
+        text: {
+            format: {
+                type: 'json_schema',
+                name: schemaName,
+                strict: true,
+                schema,
+            },
+        },
+        instructions,
+        input,
+    });
+
+    return JSON.parse(extractText(response)) as T;
+}
+
 function jsonCodeBlock(value: unknown) {
     return `\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``;
 }
@@ -610,6 +635,7 @@ function shouldRunMangaUpdates(context: ComicCoverOcrResult) {
 }
 
 async function chooseMangaUpdatesCandidate(
+    client: OpenAI,
     context: ComicCoverOcrResult,
     searchTitle: string,
     candidates: mangaupdates.MangaUpdatesSeriesResult[]
@@ -618,7 +644,18 @@ async function chooseMangaUpdatesCandidate(
         return null;
     }
 
-    return runOllamaJson<MangaUpdatesSelection>(
+    return runOpenAiJson<MangaUpdatesSelection>(
+        client,
+        'mangaupdates_selection',
+        {
+            type: 'object',
+            additionalProperties: false,
+            required: ['selected_url', 'reason'],
+            properties: {
+                selected_url: {type: ['string', 'null']},
+                reason: {type: 'string'},
+            },
+        },
         [
             'You select the best MangaUpdates search candidate for a comic OCR context.',
             'Prefer exact title matches first.',
@@ -667,6 +704,7 @@ async function validateSource(
 }
 
 async function runMangaUpdatesScraper(
+    client: OpenAI,
     context: ComicCoverOcrResult,
     searchTitles: string[]
 ): Promise<SourceRunResult> {
@@ -692,6 +730,7 @@ async function runMangaUpdatesScraper(
             }
 
             const selection = await chooseMangaUpdatesCandidate(
+                client,
                 context,
                 searchTitle,
                 searchResult.results.slice(0, 10)
@@ -768,6 +807,7 @@ async function runFilenameSource(
 }
 
 async function runTebeosferaScraper(
+    client: OpenAI,
     context: ComicCoverOcrResult,
     searchTitles: string[]
 ): Promise<SourceRunResult> {
@@ -777,6 +817,7 @@ async function runTebeosferaScraper(
             const data = toRecord(
                 await tebeosfera.scrapeComicMetaFromOcrContext(context, {
                     searchTitle,
+                    openAiClient: client,
                 })
             );
             const validation = await validateSource('tebeosfera', buildReference(context), data);
@@ -957,8 +998,8 @@ export async function getComicMeta(archivePath: string) {
     debug('titulos de busqueda', searchTitles);
 
     const [mangaupdatesResult, tebeosferaResult, schemaText] = await Promise.all([
-        runMangaUpdatesScraper(ocrResult, searchTitles),
-        runTebeosferaScraper(ocrResult, searchTitles),
+        runMangaUpdatesScraper(client, ocrResult, searchTitles),
+        runTebeosferaScraper(client, ocrResult, searchTitles),
         schemaPromise,
     ]);
 
