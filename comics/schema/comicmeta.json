@@ -6,7 +6,6 @@
   "required": [
     "title",
     "alternateTitles",
-    "volume",
     "volumeCount",
     "series",
     "summary",
@@ -43,16 +42,6 @@
             },
             "additionalProperties": false
           }
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "volume": {
-      "anyOf": [
-        {
-          "type": "number"
         },
         {
           "type": "null"

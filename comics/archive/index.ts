@@ -28,6 +28,10 @@ function generateTempPath(extension: string): string {
     return join(tmpdir(), `comic-cover-${id}${extension}`);
 }
 
+function escapeUnzipEntryName(entryName: string): string {
+    return entryName.replace(/[\\[\]*?]/g, (char) => `\\${char}`);
+}
+
 async function run(cmd: string[]): Promise<string> {
     const proc = Bun.spawn(cmd, {
         stdout: 'pipe',
@@ -64,7 +68,7 @@ async function extractFile(
     if (type === 'zip') {
         // unzip extracts to the specified directory; we use a temp dir then move
         const tempDir = join(tmpdir(), `comic-extract-${randomBytes(8).toString('hex')}`);
-        await run(['unzip', '-o', '-j', archivePath, entryName, '-d', tempDir]);
+        await run(['unzip', '-o', '-j', archivePath, escapeUnzipEntryName(entryName), '-d', tempDir]);
         const extractedName = entryName.split('/').pop() ?? entryName;
         await run(['mv', join(tempDir, extractedName), destPath]);
         await run(['rm', '-rf', tempDir]);
