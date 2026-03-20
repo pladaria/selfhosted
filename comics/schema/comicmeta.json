@@ -12,11 +12,8 @@
     "notes",
     "releaseDate",
     "artists",
-    "editor",
-    "publisher",
     "genre",
     "tags",
-    "pageCount",
     "rating",
     "publishingTradition",
     "demography"
@@ -146,26 +143,6 @@
         }
       ]
     },
-    "editor": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "publisher": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
     "genre": {
       "anyOf": [
         {
@@ -186,16 +163,6 @@
           "items": {
             "type": "string"
           }
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "pageCount": {
-      "anyOf": [
-        {
-          "type": "number"
         },
         {
           "type": "null"

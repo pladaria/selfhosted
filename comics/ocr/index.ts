@@ -4,6 +4,7 @@ import {debug} from '../utils/log.ts';
 const OLLAMA_BASE_URL = 'http://localhost:11434';
 const OLLAMA_OCR_MODEL = process.env.OLLAMA_OCR_MODEL || 'gemma3:27b';
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || '1h';
+const OLLAMA_TEMPERATURE = Number(process.env.OLLAMA_TEMPERATURE ?? '0');
 
 export type ComicCoverOcrResult = Partial<{
     title: string;
@@ -142,6 +143,7 @@ export async function ocrComicCover(imagePath: string): Promise<ComicCoverOcrRes
             model: OLLAMA_OCR_MODEL,
             stream: false,
             keep_alive: OLLAMA_KEEP_ALIVE,
+            temperature: OLLAMA_TEMPERATURE,
             messages: [
                 {
                     role: 'system',

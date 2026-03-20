@@ -7,6 +7,7 @@ const SEARCH_ENDPOINT = `${BASE_URL}/neko/templates/ajax/buscador_txt_post.php`;
 const OLLAMA_BASE_URL = "http://localhost:11434";
 const OLLAMA_TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || "gemma3:27b";
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "1h";
+const OLLAMA_TEMPERATURE = Number(process.env.OLLAMA_TEMPERATURE ?? "0");
 const REAL_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
@@ -287,6 +288,7 @@ async function chooseCandidateWithIa(context: TebeosferaOcrContext, candidates: 
       model: OLLAMA_TEXT_MODEL,
       stream: false,
       keep_alive: OLLAMA_KEEP_ALIVE,
+      temperature: OLLAMA_TEMPERATURE,
       messages: [
         { role: "system", content: prompt },
         {

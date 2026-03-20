@@ -4,10 +4,12 @@ import type { ComicCoverOcrResult } from "../ocr/index.ts";
 const OLLAMA_BASE_URL = "http://localhost:11434";
 const OLLAMA_TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || "gemma3:27b";
 const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "1h";
+const OLLAMA_TEMPERATURE = Number(process.env.OLLAMA_TEMPERATURE ?? "0");
 
 export type FilenameSourceResult = {
   title?: string;
   subtitle?: string;
+  query_texts?: string[];
   authors?: string[];
   artists?: string[];
   year?: string;
@@ -141,6 +143,7 @@ const systemPrompt = [
   "Fields to extract:",
   "- title: main work title",
   "- subtitle: subtitle, arc, or secondary title",
+  "- query_texts: ordered search queries for finding this exact work in external catalogs, from most specific to broader fallback queries",
   "- authors: writer names inferred from the filename",
   "- artists: artist names inferred from the filename",
   "- year: publication or release year if present",
@@ -158,7 +161,11 @@ const systemPrompt = [
   "- publishingTradition: only if the filename explicitly says it or includes an explicit equivalent label",
   "- release_type: only if explicitly visible in the filename, such as oneshot, anthology, tankobon, chapter-release, issue-release, artbook, magazine, novelization, omnibus",
   "- notes: short clarifying notes only about ambiguity in text that is actually present in the filename",
-  "- other: other relevant tokens from the filename that do not fit the previous fields"
+  "- other: other relevant tokens from the filename that do not fit the previous fields",
+  "For query_texts, build short natural search strings that preserve important work-identifying terms from the filename, such as edition type, subtitle, or collection wording when they help identify the exact edition.",
+  "Order query_texts from most specific to most general.",
+  "Do not include scanner groups, websites, quality markers, archive noise, or redundant punctuation in query_texts.",
+  'Example: if the filename clearly indicates "Spawn Edicion Integral", query_texts can be ["spawn edicion integral", "spawn"].'
 ].join("\n");
 
 export async function extractFilenameMeta(
@@ -177,6 +184,7 @@ export async function extractFilenameMeta(
       model: OLLAMA_TEXT_MODEL,
       stream: false,
       keep_alive: OLLAMA_KEEP_ALIVE,
+      temperature: OLLAMA_TEMPERATURE,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: JSON.stringify(payload, null, 2) }
@@ -201,6 +209,7 @@ export async function extractFilenameMeta(
   return cleanObject({
     title: normalizeString(parsed.title),
     subtitle: normalizeString(parsed.subtitle),
+    query_texts: normalizeStringArray(parsed.query_texts),
     authors: normalizeStringArray(parsed.authors),
     artists: normalizeStringArray(parsed.artists),
     year: normalizeString(parsed.year),
