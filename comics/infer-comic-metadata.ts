@@ -1,15 +1,12 @@
-import OpenAI from "openai";
+import { llmQuery } from "./ai/llm.ts";
 
 type JsonSchema = Record<string, unknown>;
-
-const MODEL = "gpt-5.4";
-const OPENAI_REASONING_EFFORT = (process.env.OPENAI_REASONING_EFFORT || "low") as "low" | "medium" | "high";
 
 const systemPrompt = [
   "You are a comics, manga, and graphic literature metadata specialist.",
   "Your task is to infer the most likely work from a noisy release filename and then research it carefully.",
   "The filename may include scanlation group names, source websites, volume/chapter numbers, quality markers, language tags, or archive noise.",
-  "Use web search when needed to verify the identity of the work and gather reliable metadata.",
+  "Use the filename context carefully and rely on cautious inference when needed to identify the work and gather likely metadata.",
   "Return metadata for the work itself, not for a specific release file, scanlation, edition rip, or uploader.",
   "All output values must be in English, except personal names and original titles which should remain in their standard original forms.",
   "Alternative titles should include English and Spanish when you can verify them, plus other common locales when confidently available.",
@@ -125,47 +122,13 @@ function sanitizeFilename(input: string) {
   };
 }
 
-function extractText(response: Awaited<ReturnType<OpenAI["responses"]["create"]>>) {
-  if (response.output_text && response.output_text.trim()) {
-    return response.output_text;
-  }
-
-  for (const item of response.output ?? []) {
-    if (item.type !== "message") {
-      continue;
-    }
-
-    for (const content of item.content ?? []) {
-      if (content.type === "output_text" && content.text?.trim()) {
-        return content.text;
-      }
-    }
-  }
-
-  throw new Error("OpenAI returned no text output.");
-}
-
-function getApiKey() {
-  return process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY || null;
-}
-
 async function main() {
   const arg = process.argv[2];
   if (!arg) {
     printUsageAndExit();
   }
 
-  const apiKey = getApiKey();
-
-  if (!apiKey) {
-    console.error("Missing OPENAI_API_KEY environment variable. OPEN_API_KEY is also accepted for backward compatibility.");
-    process.exit(1);
-  }
-
   const filenameContext = sanitizeFilename(arg);
-  const client = new OpenAI({
-    apiKey
-  });
 
   const userPrompt = [
     "Identify the work from this filename-derived context and return the requested JSON metadata.",
@@ -174,29 +137,22 @@ async function main() {
     JSON.stringify(filenameContext, null, 2)
   ].join("\n");
 
-  const response = await client.responses.create({
-    model: MODEL,
-    reasoning: { effort: OPENAI_REASONING_EFFORT },
-    tools: [{ type: "web_search" }],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "comic_metadata",
-        strict: true,
-        schema: metadataSchema
-      }
-    },
-    instructions: systemPrompt,
-    input: userPrompt
+  const response = await llmQuery({
+    engine: "ollama",
+    schemaName: "comic_metadata",
+    systemPrompt,
+    prompt: userPrompt,
+    schema: metadataSchema,
   });
 
-  const text = extractText(response);
-  const parsed = JSON.parse(text);
+  const parsed = response.data;
   console.log(JSON.stringify(parsed, null, 2));
 }
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exit(1);
+  });
+}

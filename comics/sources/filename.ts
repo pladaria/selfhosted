@@ -1,12 +1,6 @@
-import OpenAI from "openai";
 import { basename } from "node:path";
+import { llmQuery, type JsonSchema } from "../ai/llm.ts";
 import type { ComicCoverOcrResult } from "../ocr/index.ts";
-import { logOpenAiCost } from "../ai/pricing.ts";
-
-type JsonSchema = Record<string, unknown>;
-
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
-const OPENAI_REASONING_EFFORT = (process.env.OPENAI_REASONING_EFFORT || "low") as "low" | "medium" | "high";
 
 export type FilenameSourceResult = {
   title?: string;
@@ -221,62 +215,24 @@ const filenameSourceSchema: JsonSchema = {
   }
 };
 
-function getApiKey() {
-  return process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY || null;
-}
-
-function extractText(response: Awaited<ReturnType<OpenAI["responses"]["create"]>>) {
-  if (response.output_text && response.output_text.trim()) {
-    return response.output_text;
-  }
-
-  for (const item of response.output ?? []) {
-    if (item.type !== "message") {
-      continue;
-    }
-
-    for (const content of item.content ?? []) {
-      if (content.type === "output_text" && content.text?.trim()) {
-        return content.text;
-      }
-    }
-  }
-
-  throw new Error("OpenAI returned no text output.");
-}
-
 export async function extractFilenameMeta(
   input: string,
   context?: Partial<ComicCoverOcrResult>
 ): Promise<FilenameSourceResult> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("Missing OPENAI_API_KEY environment variable. OPEN_API_KEY is also accepted.");
-  }
-
-  const client = new OpenAI({ apiKey });
   const payload = {
     filename: normalizeFilenameInput(input),
     ocr_context: context ?? {}
   };
 
-  const response = await client.responses.create({
-    model: OPENAI_MODEL,
-    reasoning: { effort: OPENAI_REASONING_EFFORT },
-    text: {
-      format: {
-        type: "json_schema",
-        name: "filename_metadata",
-        strict: true,
-        schema: filenameSourceSchema
-      }
-    },
-    instructions: systemPrompt,
-    input: JSON.stringify(payload, null, 2)
+  const response = await llmQuery<Record<string, unknown>>({
+    engine: "ollama",
+    schemaName: "filename_metadata",
+    systemPrompt,
+    prompt: JSON.stringify(payload, null, 2),
+    schema: filenameSourceSchema,
   });
-  logOpenAiCost("[filename]", OPENAI_MODEL, response);
 
-  const parsed = JSON.parse(extractText(response)) as Record<string, unknown>;
+  const parsed = (response.data ?? {}) as Record<string, unknown>;
 
   return cleanObject({
     title: normalizeString(parsed.title),

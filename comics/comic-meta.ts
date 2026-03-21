@@ -1,6 +1,7 @@
 import {access, appendFile, copyFile, readdir, stat, unlink, writeFile} from 'node:fs/promises';
 import {basename, dirname, extname, join, resolve} from 'node:path';
 import OpenAI from 'openai';
+import {getDefaultLlmModel, getDefaultLlmReasoning, llmQuery, type JsonSchema} from './ai/llm.ts';
 import {logOpenAiCost} from './ai/pricing.ts';
 import {getCoverFile} from './archive/index.ts';
 import {ocrComicCover, type ComicCoverOcrResult} from './ocr/index.ts';
@@ -9,11 +10,7 @@ import * as mangaupdates from './sources/mangaupdates.ts';
 import * as tebeosfera from './sources/tebeosfera.ts';
 import {debug} from './utils/log.ts';
 
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.4-mini';
-const OPENAI_REASONING_EFFORT = (process.env.OPENAI_REASONING_EFFORT || 'low') as 'low' | 'medium' | 'high';
 const ERROR_LOG_PATH = '/tmp/comic-meta.log';
-
-type JsonSchema = Record<string, unknown>;
 
 type ValidationDecision = {
     match: boolean;
@@ -269,10 +266,6 @@ function buildSourceMarkdownPayload(source: string, data: Record<string, unknown
     return data;
 }
 
-function getApiKey() {
-    return process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY || null;
-}
-
 function isComicArchivePath(filePath: string) {
     return /\.(cbz|cbr)$/i.test(filePath);
 }
@@ -411,49 +404,24 @@ async function processComicDirectory(dirPath: string, regenerate: boolean) {
     }
 }
 
-function extractText(response: Awaited<ReturnType<OpenAI['responses']['create']>>) {
-    if (response.output_text && response.output_text.trim()) {
-        return response.output_text;
-    }
-
-    for (const item of response.output ?? []) {
-        if (item.type !== 'message') {
-            continue;
-        }
-
-        for (const content of item.content ?? []) {
-            if (content.type === 'output_text' && content.text?.trim()) {
-                return content.text;
-            }
-        }
-    }
-
-    throw new Error('OpenAI returned no text output.');
-}
-
-async function runOpenAiJson<T>(
-    client: OpenAI,
+async function runLlmJson<T>(
     schemaName: string,
     schema: JsonSchema,
     instructions: string,
     input: string
 ): Promise<T> {
-    const response = await client.responses.create({
-        model: OPENAI_MODEL,
-        reasoning: {effort: OPENAI_REASONING_EFFORT},
-        text: {
-            format: {
-                type: 'json_schema',
-                name: schemaName,
-                strict: true,
-                schema,
-            },
+    const response = await llmQuery<T>({
+        engine: 'ollama',
+        schemaName,
+        schema,
+        systemPrompt: instructions,
+        prompt: input,
+        options: {
+            temperature: 0,
         },
-        instructions,
-        input,
     });
 
-    return JSON.parse(extractText(response)) as T;
+    return response.data as T;
 }
 
 function jsonCodeBlock(value: unknown) {
@@ -599,7 +567,6 @@ function shouldRunMangaUpdates(context: ComicCoverOcrResult) {
 }
 
 async function chooseMangaUpdatesCandidate(
-    client: OpenAI,
     context: ComicCoverOcrResult,
     searchTitle: string,
     candidates: mangaupdates.MangaUpdatesSeriesResult[]
@@ -608,8 +575,7 @@ async function chooseMangaUpdatesCandidate(
         return null;
     }
 
-    return runOpenAiJson<MangaUpdatesSelection>(
-        client,
+    return runLlmJson<MangaUpdatesSelection>(
         'mangaupdates_selection',
         {
             type: 'object',
@@ -641,15 +607,13 @@ async function chooseMangaUpdatesCandidate(
 }
 
 async function validateSource(
-    client: OpenAI,
     source: string,
     reference: SourceReference,
     data: Record<string, unknown>
 ): Promise<ValidationDecision> {
     const candidate = buildSourceCandidate(source, data);
 
-    return runOpenAiJson<ValidationDecision>(
-        client,
+    return runLlmJson<ValidationDecision>(
         'validation_decision',
         {
             type: 'object',
@@ -680,7 +644,6 @@ async function validateSource(
 }
 
 async function runMangaUpdatesScraper(
-    client: OpenAI,
     context: ComicCoverOcrResult,
     searchTitles: string[]
 ): Promise<SourceRunResult> {
@@ -706,7 +669,6 @@ async function runMangaUpdatesScraper(
             }
 
             const selection = await chooseMangaUpdatesCandidate(
-                client,
                 context,
                 searchTitle,
                 searchResult.results.slice(0, 10)
@@ -722,7 +684,7 @@ async function runMangaUpdatesScraper(
             });
 
             const details = toRecord(await mangaupdates.getSeries(selected.url));
-            const validation = await validateSource(client, 'mangaupdates', buildReference(context), details);
+            const validation = await validateSource('mangaupdates', buildReference(context), details);
 
             debug('[mangaupdates] validacion', validation);
             if (!validation.match) {
@@ -753,7 +715,6 @@ async function runMangaUpdatesScraper(
 }
 
 async function runFilenameSource(
-    client: OpenAI,
     archivePath: string,
     context?: ComicCoverOcrResult
 ): Promise<SourceRunResult> {
@@ -761,7 +722,7 @@ async function runFilenameSource(
         debug('[filename] analizando', {archivePath});
         const data = toRecord(await filename.extractFilenameMeta(archivePath, context));
         debug('[filename] resultado', data);
-        const validation = context ? await validateSource(client, 'filename', buildReference(context), data) : null;
+        const validation = context ? await validateSource('filename', buildReference(context), data) : null;
         if (validation) {
             debug('[filename] validacion', validation);
         }
@@ -784,7 +745,6 @@ async function runFilenameSource(
 }
 
 async function runTebeosferaScraper(
-    client: OpenAI,
     context: ComicCoverOcrResult,
     searchTitles: string[]
 ): Promise<SourceRunResult> {
@@ -794,10 +754,9 @@ async function runTebeosferaScraper(
             const data = toRecord(
                 await tebeosfera.scrapeComicMetaFromOcrContext(context, {
                     searchTitle,
-                    openAiClient: client,
                 })
             );
-            const validation = await validateSource(client, 'tebeosfera', buildReference(context), data);
+            const validation = await validateSource('tebeosfera', buildReference(context), data);
             debug('[tebeosfera] validacion', validation);
 
             if (!validation.match) {
@@ -846,9 +805,10 @@ function buildSourcesMarkdown(ocrResult: ComicCoverOcrResult, results: SourceRun
 }
 
 async function aggregateComicMeta(client: OpenAI, markdown: string, schema: JsonSchema) {
+    const model = getDefaultLlmModel('openai');
     const response = await client.responses.create({
-        model: OPENAI_MODEL,
-        reasoning: {effort: OPENAI_REASONING_EFFORT},
+        model,
+        reasoning: {effort: getDefaultLlmReasoning('openai')},
         text: {
             format: {
                 type: 'json_schema',
@@ -959,19 +919,19 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
         input: markdown,
     });
 
-    logOpenAiCost('[aggregate] final', OPENAI_MODEL, response);
+    logOpenAiCost('[aggregate] final', model, response);
 
     return JSON.parse(extractText(response)) as Record<string, unknown>;
 }
 
 export async function getComicMeta(archivePath: string) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
+    const openAiApiKey = process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY || null;
+    if (!openAiApiKey) {
         throw new Error('Missing OPENAI_API_KEY environment variable. OPEN_API_KEY is also accepted.');
     }
 
-    const client = new OpenAI({apiKey});
-    const filenamePromise = runFilenameSource(client, archivePath);
+    const client = new OpenAI({apiKey: openAiApiKey});
+    const filenamePromise = runFilenameSource(archivePath);
     const schemaPromise = Bun.file('./schema/comicmeta.json').text();
 
     const coverPath = await extractFreshFolderCoverForArchive(archivePath);
@@ -988,8 +948,8 @@ export async function getComicMeta(archivePath: string) {
     debug('titulos de busqueda', searchTitles);
 
     const [mangaupdatesResult, tebeosferaResult, schemaText] = await Promise.all([
-        runMangaUpdatesScraper(client, ocrResult, searchTitles),
-        runTebeosferaScraper(client, ocrResult, searchTitles),
+        runMangaUpdatesScraper(ocrResult, searchTitles),
+        runTebeosferaScraper(ocrResult, searchTitles),
         schemaPromise,
     ]);
 
