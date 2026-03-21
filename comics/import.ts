@@ -192,7 +192,7 @@ async function getFilenameTitleKey(archivePath: string) {
         debug('[import] filename key fallback', {
             archivePath,
             error: error instanceof Error ? error.message : String(error),
-        });
+        }, 'ERROR');
     }
 
     return buildImportCacheKey(basename(archivePath).replace(/\.[^.]+$/, ''));
@@ -228,6 +228,7 @@ async function processComicFile(rootDir: string, archivePath: string, importCach
     }
 
     const metadata = (await getComicMeta(archivePath)) as ComicMeta;
+    console.log(JSON.stringify(metadata, null, 2));
     const destinationDir = getDestinationDirectory(rootDir, metadata);
     const destinationArchivePath = join(destinationDir, basename(archivePath));
     const destinationMetadataPath = join(destinationDir, 'metadata.json');
@@ -292,7 +293,7 @@ async function main() {
             debug('[import] error procesando comic', {
                 archivePath,
                 error: error instanceof Error ? error.message : String(error),
-            });
+            }, 'ERROR');
         }
     }
 

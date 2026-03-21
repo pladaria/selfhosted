@@ -1,4 +1,7 @@
 import {readFileSync} from 'fs';
+import {mkdtemp, rm, unlink} from 'fs/promises';
+import {tmpdir} from 'os';
+import {dirname, join} from 'path';
 import {debug} from '../utils/log.ts';
 
 const OLLAMA_BASE_URL = 'http://localhost:11434';
@@ -24,6 +27,28 @@ export type ComicCoverOcrResult = Partial<{
 function imageToBase64(imagePath: string): string {
     const buffer = readFileSync(imagePath);
     return buffer.toString('base64');
+}
+
+function isUnsupportedJpegError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes('unsupported JPEG feature: unknown marker');
+}
+
+async function createSafeJpeg(imagePath: string): Promise<string> {
+    const tempDir = await mkdtemp(join(tmpdir(), 'comic-ocr-'));
+    const safeImagePath = join(tempDir, 'safe-cover.jpg');
+    const proc = Bun.spawn(['convert', imagePath, '-strip', '-interlace', 'none', safeImagePath], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+    });
+
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+        const stderr = await new Response(proc.stderr).text();
+        throw new Error(`Failed to create safe JPEG (exit ${exitCode}): ${stderr}`);
+    }
+
+    return safeImagePath;
 }
 
 function normalizeString(value: unknown): string | undefined {
@@ -126,7 +151,7 @@ const systemPrompt = [
     'If a field is not visible or cannot be determined, use null for strings, empty array for arrays.',
 ].join('\n');
 
-export async function ocrComicCover(imagePath: string): Promise<ComicCoverOcrResult> {
+async function runOllamaOcr(imagePath: string): Promise<ComicCoverOcrResult> {
     debug('leyendo imagen', imagePath);
     const base64Image = imageToBase64(imagePath);
     debug('ejecutando ollama', {
@@ -190,6 +215,27 @@ export async function ocrComicCover(imagePath: string): Promise<ComicCoverOcrRes
     });
 
     return result;
+}
+
+export async function ocrComicCover(imagePath: string): Promise<ComicCoverOcrResult> {
+    try {
+        return await runOllamaOcr(imagePath);
+    } catch (error) {
+        if (!isUnsupportedJpegError(error)) {
+            throw error;
+        }
+
+        debug('jpeg no compatible con ollama, generando version safe', {imagePath}, 'WARN');
+        const safeImagePath = await createSafeJpeg(imagePath);
+
+        try {
+            debug('reintentando ocr con jpeg safe', {imagePath: safeImagePath}, 'WARN');
+            return await runOllamaOcr(safeImagePath);
+        } finally {
+            await unlink(safeImagePath).catch(() => {});
+            await rm(dirname(safeImagePath), {recursive: true, force: true}).catch(() => {});
+        }
+    }
 }
 
 if (import.meta.main) {

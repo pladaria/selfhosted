@@ -61,6 +61,12 @@ function isImageFile(filename: string): boolean {
     return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
+function isMacOsMetadataPath(filename: string): boolean {
+    return filename
+        .split(/[\\/]+/)
+        .some((segment) => segment.trim().toLowerCase() === '__macosx');
+}
+
 function getExtension(filename: string): string {
     const dot = filename.lastIndexOf('.');
     return dot >= 0 ? filename.slice(dot) : '';
@@ -132,7 +138,10 @@ export async function getCoverFile(archivePath: string): Promise<string> {
     const type = await detectArchiveType(archivePath);
     const files = await listFiles(archivePath, type);
 
-    const images = files.filter(isImageFile).sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+    const images = files
+        .filter((file) => !isMacOsMetadataPath(file))
+        .filter(isImageFile)
+        .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
 
     if (images.length === 0) {
         throw new Error(`No image files found in archive: ${archivePath}`);

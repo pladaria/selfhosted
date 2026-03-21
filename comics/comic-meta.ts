@@ -1,7 +1,13 @@
 import {access, appendFile, copyFile, readdir, stat, unlink, writeFile} from 'node:fs/promises';
 import {basename, dirname, extname, join, resolve} from 'node:path';
 import OpenAI from 'openai';
-import {getDefaultLlmModel, getDefaultLlmReasoning, llmQuery, type JsonSchema} from './ai/llm.ts';
+import {
+    extractOpenAiText,
+    getDefaultLlmModel,
+    getDefaultLlmReasoning,
+    llmQuery,
+    type JsonSchema,
+} from './ai/llm.ts';
 import {logOpenAiCost} from './ai/pricing.ts';
 import {getCoverFile} from './archive/index.ts';
 import {ocrComicCover, type ComicCoverOcrResult} from './ocr/index.ts';
@@ -11,6 +17,7 @@ import * as tebeosfera from './sources/tebeosfera.ts';
 import {debug} from './utils/log.ts';
 
 const ERROR_LOG_PATH = '/tmp/comic-meta.log';
+const OPENAI_AGGREGATE_PROMPT_CACHE_KEY = 'comicmeta-aggregate-v1';
 
 type ValidationDecision = {
     match: boolean;
@@ -809,6 +816,7 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
     const response = await client.responses.create({
         model,
         reasoning: {effort: getDefaultLlmReasoning('openai')},
+        prompt_cache_key: OPENAI_AGGREGATE_PROMPT_CACHE_KEY,
         text: {
             format: {
                 type: 'json_schema',
@@ -921,7 +929,7 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
 
     logOpenAiCost('[aggregate] final', model, response);
 
-    return JSON.parse(extractText(response)) as Record<string, unknown>;
+    return JSON.parse(extractOpenAiText(response)) as Record<string, unknown>;
 }
 
 export async function getComicMeta(archivePath: string) {

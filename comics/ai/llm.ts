@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 export type JsonSchema = Record<string, unknown>;
 export type LlmEngine = 'ollama' | 'openai';
 export type LlmReasoningEffort = 'low' | 'medium' | 'high';
+export type LlmPromptCacheRetention = 'in_memory' | '24h';
 
 type LlmTool = {
     type: 'web_search';
@@ -13,6 +14,8 @@ type LlmQueryOptions = {
     reasoning?: LlmReasoningEffort;
     tools?: LlmTool[];
     keepAlive?: string;
+    promptCacheKey?: string;
+    promptCacheRetention?: LlmPromptCacheRetention;
 };
 
 type LlmQueryParams = {
@@ -53,7 +56,7 @@ function getOpenAiApiKey() {
     return process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY || null;
 }
 
-function extractOpenAiText(response: Awaited<ReturnType<OpenAI['responses']['create']>>) {
+export function extractOpenAiText(response: Awaited<ReturnType<OpenAI['responses']['create']>>) {
     if (response.output_text && response.output_text.trim()) {
         return response.output_text;
     }
@@ -90,6 +93,8 @@ async function runOpenAiQuery<T>({
         model: getDefaultLlmModel('openai'),
         reasoning: {effort: options?.reasoning || getDefaultLlmReasoning('openai')},
         tools: options?.tools,
+        prompt_cache_key: options?.promptCacheKey,
+        prompt_cache_retention: options?.promptCacheRetention,
         ...(schema
             ? {
                   text: {
