@@ -52,7 +52,19 @@ export type ComicMeta = {
   tags?: string[];
   pageCount?: number;
   publishingTradition?: string;
-  demography?: "shojo" | "seinen" | "shonen" | "kodomo" | "josei" | "children" | "young-adult" | "adult" | "adult-erotic";
+  demography?:
+    | "shojo"
+    | "shoujo"
+    | "seinen"
+    | "shonen"
+    | "shounen"
+    | "kodomo"
+    | "josei"
+    | "children"
+    | "young-adult"
+    | "adult"
+    | "adult-erotic"
+    | "hentai";
 };
 
 type SearchCandidate = {

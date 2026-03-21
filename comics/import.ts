@@ -52,10 +52,7 @@ function slugifySegment(value: string, fallback: string) {
 }
 
 function sanitizePathSegment(value: string, fallback: string) {
-    const sanitized = normalizeWhitespace(value)
-        .replace(/\0/g, ' ')
-        .replace(/\//g, ' ')
-        .trim();
+    const sanitized = normalizeWhitespace(value).replace(/\0/g, ' ').replace(/\//g, ' ').trim();
 
     if (!sanitized || sanitized === '.' || sanitized === '..') {
         return fallback;
@@ -144,8 +141,21 @@ function getPublisherFolder(metadata: ComicMeta) {
     return sanitizePathSegment(metadata.publisher || 'desconocido', 'desconocido');
 }
 
+function normalizeDemography(value: string | undefined) {
+    const normalized = slugifySegment(value || '', 'desconocido');
+
+    switch (normalized) {
+        case 'shoujo':
+            return 'shojo';
+        case 'shounen':
+            return 'shonen';
+        default:
+            return normalized;
+    }
+}
+
 function getDemographyFolder(metadata: ComicMeta) {
-    return sanitizePathSegment(metadata.demography || 'desconocido', 'desconocido');
+    return sanitizePathSegment(normalizeDemography(metadata.demography), 'desconocido');
 }
 
 function getDestinationDirectory(rootDir: string, metadata: ComicMeta) {

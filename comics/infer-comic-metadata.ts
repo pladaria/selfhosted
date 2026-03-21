@@ -16,7 +16,7 @@ const systemPrompt = [
   "If the original title is written in a non-Latin script, always include a transliterated alternative title using the locale suffix -Latn, such as ja-Latn, ko-Latn, zh-Latn, ru-Latn, or ar-Latn, using the most standard romanization available.",
   "If a field cannot be verified confidently, prefer null, an empty array, or a cautious short note instead of inventing facts.",
   "The type field should classify the work at a high level, for example: manga, manhua, manhwa, franco-belgian, american, spanish, portuguese, graphic-novel, or another precise publishing tradition if more appropriate.",
-  "For demographic, if it is manga use terms like shonen, shojo, seinen, josei, kodomo; if it is not manga use a readership label such as children, juvenile, adult, erotic, or null when unclear.",
+  "For demographic, always provide a value. If it is manga use terms like shonen or shounen, shojo or shoujo, seinen, josei, kodomo, or hentai for adult manga with high sexual content; if it is not manga use a readership label such as children, young-adult, adult, or adult-erotic.",
   "The synopsis should be concise but informative.",
   "The additional_information field should contain notable context such as awards, historical significance, publication magazine, adaptations, or author context, but remain compact.",
   "The completed boolean must indicate whether the series is finished overall, not whether the specific file is complete.",
@@ -84,9 +84,7 @@ const metadataSchema: JsonSchema = {
       items: { type: "string" }
     },
     synopsis: { type: "string" },
-    demographic: {
-      anyOf: [{ type: "string" }, { type: "null" }]
-    },
+    demographic: { type: "string" },
     volume_count: {
       anyOf: [{ type: "integer" }, { type: "null" }]
     },
