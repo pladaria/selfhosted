@@ -1,11 +1,10 @@
 import {access, appendFile, copyFile, readdir, stat, unlink, writeFile} from 'node:fs/promises';
 import {basename, dirname, extname, join, resolve} from 'node:path';
-import OpenAI from 'openai';
 import {
-    extractOpenAiText,
     getDefaultLlmModel,
     getDefaultLlmReasoning,
     llmQuery,
+    type LlmEngine,
     type JsonSchema,
 } from './ai/llm.ts';
 import {logOpenAiCost} from './ai/pricing.ts';
@@ -18,6 +17,7 @@ import {debug} from './utils/log.ts';
 
 const ERROR_LOG_PATH = '/tmp/comic-meta.log';
 const OPENAI_AGGREGATE_PROMPT_CACHE_KEY = 'comicmeta-aggregate-v1';
+const AGGREGATE_LLM_ENGINE = (process.env.COMIC_META_AGGREGATE_ENGINE || 'openai') as LlmEngine;
 
 type ValidationDecision = {
     match: boolean;
@@ -811,21 +811,13 @@ function buildSourcesMarkdown(ocrResult: ComicCoverOcrResult, results: SourceRun
     return sections.join('\n\n');
 }
 
-async function aggregateComicMeta(client: OpenAI, markdown: string, schema: JsonSchema) {
-    const model = getDefaultLlmModel('openai');
-    const response = await client.responses.create({
-        model,
-        reasoning: {effort: getDefaultLlmReasoning('openai')},
-        prompt_cache_key: OPENAI_AGGREGATE_PROMPT_CACHE_KEY,
-        text: {
-            format: {
-                type: 'json_schema',
-                name: 'comicmeta',
-                strict: true,
-                schema: schema as JsonSchema,
-            },
-        },
-        instructions: [
+async function aggregateComicMeta(markdown: string, schema: JsonSchema) {
+    const model = getDefaultLlmModel(AGGREGATE_LLM_ENGINE);
+    const response = await llmQuery<Record<string, unknown>>({
+        engine: AGGREGATE_LLM_ENGINE,
+        schemaName: 'comicmeta',
+        schema,
+        systemPrompt: [
             'You are a comic metadata aggregation specialist.',
             'You will receive markdown containing OCR data and validated scraper results.',
             'Produce a single JSON object that matches the provided ComicMeta schema.',
@@ -924,21 +916,21 @@ async function aggregateComicMeta(client: OpenAI, markdown: string, schema: Json
             'Do not invent facts.',
             'Return only the JSON object.',
         ].join('\n'),
-        input: markdown,
+        prompt: markdown,
+        options: {
+            reasoning: getDefaultLlmReasoning('openai'),
+            promptCacheKey: OPENAI_AGGREGATE_PROMPT_CACHE_KEY,
+        },
     });
 
-    logOpenAiCost('[aggregate] final', model, response);
+    if (AGGREGATE_LLM_ENGINE === 'openai') {
+        logOpenAiCost('[aggregate] final', model, response.raw as Parameters<typeof logOpenAiCost>[2]);
+    }
 
-    return JSON.parse(extractOpenAiText(response)) as Record<string, unknown>;
+    return (response.data ?? {}) as Record<string, unknown>;
 }
 
 export async function getComicMeta(archivePath: string) {
-    const openAiApiKey = process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY || null;
-    if (!openAiApiKey) {
-        throw new Error('Missing OPENAI_API_KEY environment variable. OPEN_API_KEY is also accepted.');
-    }
-
-    const client = new OpenAI({apiKey: openAiApiKey});
     const filenamePromise = runFilenameSource(archivePath);
     const schemaPromise = Bun.file('./schema/comicmeta.json').text();
 
@@ -976,7 +968,7 @@ export async function getComicMeta(archivePath: string) {
     }
 
     const finalResult = postProcessComicMeta(
-        await aggregateComicMeta(client, markdown, JSON.parse(schemaText) as JsonSchema),
+        await aggregateComicMeta(markdown, JSON.parse(schemaText) as JsonSchema),
         sourceResults,
         ocrResult
     );

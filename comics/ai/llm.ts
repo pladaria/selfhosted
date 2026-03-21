@@ -125,10 +125,6 @@ async function runOllamaQuery<T>({
     schema,
     options,
 }: Omit<LlmQueryParams, 'engine' | 'schemaName'>): Promise<LlmQueryResult<T>> {
-    if (options?.tools?.length) {
-        throw new Error('Ollama engine does not support OpenAI tools in llmQuery.');
-    }
-
     const response = await fetch(`${DEFAULT_OLLAMA_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
