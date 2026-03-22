@@ -122,6 +122,7 @@ function mapTraditionFolder(publishingTradition: string | undefined) {
             return 'manga';
         case 'franco belgian':
         case 'french comic':
+        case 'french-comic':
             return 'franco-belga';
         case 'spanish':
         case 'spanish comic':

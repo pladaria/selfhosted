@@ -24,14 +24,57 @@ bun install
 ### `archive/`
 
 Utilities for reading compressed comic archives (`.cbz`, `.cbr`, `.zip`, `.rar`). Uses Linux CLI tools
-(`unzip`, `unrar`) under the hood.
+(`file`, `unzip`, `unrar`) under the hood.
 
 **Exports:**
 
 - `getCoverFile(archivePath: string): Promise<string>` — Extracts the first image (sorted alphabetically) from
   the archive and saves it to a temp file. Returns the path to the extracted image.
 
-**Requirements:** `unzip`, `unrar`
+**Scripts:**
+
+- `archive/verify.ts` — Verifies archive type and integrity for `.cbz`, `.cbr`, `.zip`, and `.rar` files,
+  optionally traversing directories recursively. Fixes mismatched extensions, moves invalid archives to an
+  error directory, and stores successful checks in `verification-status.jsonl` so later runs can skip already
+  verified files silently.
+
+**Usage:**
+
+```sh
+bun run archive/verify.ts <file-or-dir> [-r] <error-dir>
+```
+
+**Examples:**
+
+```sh
+# Verify all supported archives in a directory
+bun run archive/verify.ts "/mnt/MEDIA/comics/Marvel" "/mnt/MEDIA/comics-errors"
+
+# Verify recursively, including subdirectories
+bun run archive/verify.ts "/mnt/MEDIA/comics" -r "/mnt/MEDIA/comics-errors"
+
+# Verify a single file
+bun run archive/verify.ts "/mnt/MEDIA/comics/Batman 001.cbr" "/mnt/MEDIA/comics-errors"
+
+# Resume a previous run; files already recorded in verification-status.jsonl are skipped silently
+bun run archive/verify.ts "/mnt/MEDIA/comics" -r "/mnt/MEDIA/comics-errors"
+```
+
+**Features:**
+
+- Accepts either a single file or a directory
+- When the input is a directory, processes `.cbr`, `.cbz`, `.rar`, and `.zip` files
+- Supports recursive traversal with `-r`
+- Uses `file` to detect whether each archive is really ZIP or RAR
+- Renames files when the extension does not match the detected type
+- Treats non-ZIP/RAR files as invalid and moves them to the error directory
+- Verifies integrity with `unzip` or `unrar`
+- Creates the error directory automatically if it does not exist
+- Prints colored logs, including per-file processing time
+- Stores successful verifications in `verification-status.jsonl` in the input directory so future runs can
+  skip unchanged files silently
+
+**Requirements:** `file`, `unzip`, `unrar`
 
 ### `ocr/`
 
@@ -56,7 +99,7 @@ Scraping modules for online comic/manga databases:
 
 ## Scripts
 
-## 1. `convert-to-webp.sh`
+### `convert-to-webp.sh`
 
 **Description:** Converts CBZ comic archives to use WebP images, resizing images to a maximum dimension.
 Creates a new CBZ file with the suffix ` [webp]`.
@@ -98,9 +141,7 @@ Creates a new CBZ file with the suffix ` [webp]`.
 ./convert-to-webp.sh /path/to/comics_folder/mycomic.cbz
 ```
 
----
-
-## 2. `repack-cbz.sh`
+### `repack-cbz.sh`
 
 **Description:** Recursively converts all `.cbr` files in a directory to `.cbz` format. By default, original
 `.cbr` files are moved to `/tmp/cbr_backup`, but you can choose to delete them instead.
@@ -130,9 +171,7 @@ Creates a new CBZ file with the suffix ` [webp]`.
 ./repack-cbz.sh -d /path/to/comics_folder
 ```
 
----
-
-## 3. `infer-comic-metadata.ts`
+### `infer-comic-metadata.ts`
 
 **Description:** Uses OpenAI `gpt-5.4` to identify a comic, manga, or graphic novel from a noisy filename and
 prints normalized metadata as JSON.
